@@ -1,4 +1,9 @@
 {$DOMAIN} {
 	encode gzip
+	# Итог последнего автообновления: время, коммит, хвост лога сборки.
+	handle_path /deploy-status/* {
+		root * /srv/status
+		file_server
+	}
 	reverse_proxy gsc:3000
 }

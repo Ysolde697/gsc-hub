@@ -2,6 +2,7 @@
 # Ставит автообновление панели через systemd (каждые 10 минут) и сразу
 # обновляет её. Запускать от root на сервере: sh deploy/install-autoupdate.sh
 set -eu
+mkdir -p /opt/gsc/status
 cat > /etc/systemd/system/gsc-update.service <<'UNIT'
 [Unit]
 Description=gsc-hub: обновить панель из GitHub

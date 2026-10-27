@@ -27,5 +27,6 @@ services:
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - /opt/gsc/caddy:/data
+      - /opt/gsc/status:/srv/status:ro
     depends_on:
       - gsc
