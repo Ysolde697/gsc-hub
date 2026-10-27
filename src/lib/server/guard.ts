@@ -18,6 +18,9 @@ export function isPublicPath(path: string): boolean {
     path === '/login' ||
     // Политика конфиденциальности: Google требует открытую ссылку на неё.
     path === '/privacy' ||
+    // Клиенты MCP (claude.ai) ищут здесь настройки OAuth; пусть получат 404,
+    // а не редирект на форму входа.
+    path.startsWith('/.well-known/') ||
     path.startsWith('/auth/') ||
     path.startsWith('/_app/') ||
     path === '/favicon.svg' ||
