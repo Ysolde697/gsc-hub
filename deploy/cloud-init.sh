@@ -30,6 +30,5 @@ ENV
 umask 022
 
 git clone https://github.com/__REPO__ /opt/gsc/app
-/opt/gsc/app/deploy/update.sh --force
-
-echo '*/10 * * * * root /opt/gsc/app/deploy/update.sh >> /var/log/gsc-update.log 2>&1' > /etc/cron.d/gsc-update
+# Автообновление (systemd-таймер раз в 10 минут) и первая сборка.
+sh /opt/gsc/app/deploy/install-autoupdate.sh
