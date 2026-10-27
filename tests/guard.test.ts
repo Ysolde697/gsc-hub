@@ -4,6 +4,8 @@ import { isPublicPath, isManagerAllowed } from '../src/lib/server/guard';
 describe('guard paths', () => {
   it('public paths need no session', () => {
     expect(isPublicPath('/login')).toBe(true);
+    expect(isPublicPath('/privacy')).toBe(true);
+    expect(isPublicPath('/privacy/x')).toBe(false);
     expect(isPublicPath('/auth/callback/google')).toBe(true);
     expect(isPublicPath('/_app/immutable/x.js')).toBe(true);
     expect(isPublicPath('/dashboard')).toBe(false);

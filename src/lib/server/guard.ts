@@ -16,6 +16,8 @@ export function isPublicPath(path: string): boolean {
     // обработчика под /api/v1.
     path.startsWith('/api/v1/') ||
     path === '/login' ||
+    // Политика конфиденциальности: Google требует открытую ссылку на неё.
+    path === '/privacy' ||
     path.startsWith('/auth/') ||
     path.startsWith('/_app/') ||
     path === '/favicon.svg' ||
