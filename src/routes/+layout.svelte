@@ -4,6 +4,7 @@
   import favicon from '$lib/assets/favicon.svg';
   import { page } from '$app/state';
   import ConsolePicker from '$lib/components/ConsolePicker.svelte';
+  import GroupPicker from '$lib/components/GroupPicker.svelte';
   import { RELEASES_LATEST_URL, isNewer, releaseUrl, shouldCheck } from '$lib/version';
 
   const NAV = [
@@ -165,7 +166,7 @@
       </nav>
     {/if}
     <div class="ml-auto flex shrink-0 items-center gap-1.5">
-      {#if isAdmin}<ConsolePicker consoles={data?.consoles ?? []} />{/if}
+      {#if isAdmin}<ConsolePicker consoles={data?.consoles ?? []} /><GroupPicker groups={data?.siteGroups ?? []} />{/if}
       <button
         type="button"
         class="btn btn-sm {blur ? 'bg-ink text-white hover:bg-ink-2' : 'btn-ghost'}"

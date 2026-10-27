@@ -2,6 +2,7 @@ import type { LayoutServerLoad } from './$types';
 import { appVersion } from '$lib/server/version';
 import { db } from '$lib/server/db';
 import { listAccounts } from '$lib/server/accounts';
+import { listSiteGroups } from '$lib/server/site-groups';
 
 export const load: LayoutServerLoad = async ({ locals, depends }) => {
   depends('app:consoles');
@@ -22,6 +23,9 @@ export const load: LayoutServerLoad = async ({ locals, depends }) => {
           status: a.status,
           inUse: a.in_use !== 0
         }))
+      : [],
+    siteGroups: isAdmin
+      ? listSiteGroups(db()).map((g) => ({ id: g.id, name: g.name, active: g.active, size: g.hosts.length }))
       : []
   };
 };

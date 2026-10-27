@@ -132,6 +132,23 @@ CREATE TABLE IF NOT EXISTS hidden_sites (
   PRIMARY KEY (account_id, site_url)
 );
 
+-- Группы сайтов («Приоритет» и т. п.). Состав хранится доменами, а не
+-- property: один сайт в двух консолях (sc-domain: и https://) — один домен.
+-- active = 1 у одной группы максимум: её выбрали фильтром в шапке.
+CREATE TABLE IF NOT EXISTS site_groups (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  name       TEXT NOT NULL UNIQUE,
+  active     INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS site_group_hosts (
+  group_id INTEGER NOT NULL REFERENCES site_groups(id) ON DELETE CASCADE,
+  host     TEXT NOT NULL,
+  added_at INTEGER NOT NULL,
+  PRIMARY KEY (group_id, host)
+);
+
 CREATE TABLE IF NOT EXISTS site_dates (
   host       TEXT PRIMARY KEY,
   created_at INTEGER NOT NULL,

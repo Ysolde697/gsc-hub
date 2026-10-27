@@ -5,12 +5,14 @@ import { INSPECT_LIMIT, mapSettledLimit } from './concurrency';
 import { getGoogleClientId, getGoogleClientSecret } from './config';
 import {
   type AccountRow,
+  listAccounts,
   listReportAccounts,
   markError,
   markRevoked,
   updateTokens
 } from './accounts';
 import { listHiddenSites } from './hidden';
+import { activeGroupHosts, siteInHosts } from './site-groups';
 import { hostOfSite } from './site-events';
 
 const REFRESH_URL = 'https://oauth2.googleapis.com/token';
@@ -148,13 +150,40 @@ export async function listSitesForAccount(
   });
 }
 
+/**
+ * Сайты консоли для общих отчётов: если в шапке выбрана группа сайтов,
+ * остаются только её домены. Страница одного сайта и ручные действия по
+ * конкретному сайту идут мимо этого фильтра.
+ */
+async function listReportSitesForAccount(db: Db, acc: AccountRow): Promise<SiteRow[]> {
+  const sites = await listSitesForAccount(db, acc);
+  const hosts = activeGroupHosts(db);
+  return hosts ? sites.filter((s) => siteInHosts(s.siteUrl, hosts)) : sites;
+}
+
+/**
+ * Все сайты всех рабочих консолей, без фильтров по галочкам и группам:
+ * чтобы на странице групп можно было выбрать любой сайт.
+ */
+export async function listAllKnownSites(db: Db): Promise<SitesFanOut> {
+  const accounts = listAccounts(db).filter((a) => a.status === 'active');
+  const sites: SiteRow[] = [];
+  const errors: SitesFanOut['errors'] = [];
+  const settled = await Promise.allSettled(accounts.map((a) => listSitesForAccount(db, a)));
+  settled.forEach((r, i) => {
+    if (r.status === 'fulfilled') sites.push(...r.value);
+    else errors.push({ accountId: accounts[i].id, accountEmail: accounts[i].email, reason: (r.reason as Error).message });
+  });
+  return { sites, errors };
+}
+
 export async function listSitesForAllAccounts(db: Db): Promise<SitesFanOut> {
   const accounts = listReportAccounts(db);
   const sites: SiteRow[] = [];
   const errors: SitesFanOut['errors'] = [];
 
   const settled = await Promise.allSettled(
-    accounts.map((a) => listSitesForAccount(db, a))
+    accounts.map((a) => listReportSitesForAccount(db, a))
   );
 
   settled.forEach((r, i) => {
@@ -657,7 +686,7 @@ export async function fetchTodayTotals(db: Db): Promise<TodayTotals> {
   const pairs: { acc: AccountRow; site: SiteRow }[] = [];
 
   const perAccount = await Promise.allSettled(
-    accounts.map((a) => listSitesForAccount(db, a).then((sites) => ({ acc: a, sites })))
+    accounts.map((a) => listReportSitesForAccount(db, a).then((sites) => ({ acc: a, sites })))
   );
   perAccount.forEach((r, i) => {
     const acc = accounts[i];
@@ -724,7 +753,7 @@ export async function fetchDailyBreakdown(
 
   const perAccount = await Promise.allSettled(
     accounts.map((a) =>
-      listSitesForAccount(db, a).then((sites) => ({ acc: a, sites }))
+      listReportSitesForAccount(db, a).then((sites) => ({ acc: a, sites }))
     )
   );
 
@@ -850,7 +879,7 @@ export async function fetchPerSiteQueries(
 
   const perAccount = await Promise.allSettled(
     accounts.map((a) =>
-      listSitesForAccount(db, a).then((sites) => ({ acc: a, sites }))
+      listReportSitesForAccount(db, a).then((sites) => ({ acc: a, sites }))
     )
   );
 
@@ -929,7 +958,7 @@ export async function fetchPerSitePages(
 
   const perAccount = await Promise.allSettled(
     accounts.map((a) =>
-      listSitesForAccount(db, a).then((sites) => ({ acc: a, sites }))
+      listReportSitesForAccount(db, a).then((sites) => ({ acc: a, sites }))
     )
   );
 
@@ -1004,7 +1033,7 @@ export async function listSitesWithSummary(
 
   // Step 1: fan-out sites.list per account, capture (acc, site[]) and per-account errors.
   const perAccount = await Promise.allSettled(
-    accounts.map((a) => listSitesForAccount(db, a).then((sites) => ({ acc: a, sites })))
+    accounts.map((a) => listReportSitesForAccount(db, a).then((sites) => ({ acc: a, sites })))
   );
 
   const pairs: { acc: AccountRow; site: SiteRow }[] = [];
@@ -1095,7 +1124,7 @@ export async function fetchQueryHistory(
 
   const perAccount = await Promise.allSettled(
     accounts.map((a) =>
-      listSitesForAccount(db, a).then((sites) => ({ acc: a, sites }))
+      listReportSitesForAccount(db, a).then((sites) => ({ acc: a, sites }))
     )
   );
 
@@ -1236,7 +1265,7 @@ export async function fetchPortfolioDecayPages(
   const accounts = listReportAccounts(db);
 
   const perAccount = await Promise.allSettled(
-    accounts.map((a) => listSitesForAccount(db, a).then((sites) => ({ acc: a, sites })))
+    accounts.map((a) => listReportSitesForAccount(db, a).then((sites) => ({ acc: a, sites })))
   );
 
   const pairs: { acc: AccountRow; site: SiteRow }[] = [];
@@ -1316,7 +1345,7 @@ export async function fetchPortfolioDaily(db: Db, days: number = 180): Promise<P
   const hidden = new Set(listHiddenSites(db));
 
   const perAccount = await Promise.allSettled(
-    accounts.map((a) => listSitesForAccount(db, a).then((sites) => ({ acc: a, sites })))
+    accounts.map((a) => listReportSitesForAccount(db, a).then((sites) => ({ acc: a, sites })))
   );
 
   const pairs: { acc: AccountRow; site: SiteRow }[] = [];
