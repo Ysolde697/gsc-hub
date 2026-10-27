@@ -7,6 +7,8 @@ export interface AccountRow {
   access_token: string; refresh_token: string; expires_at: number;
   scope: string; status: AccountStatus; last_error: string | null;
   added_at: number; owner_id: string | null;
+  /** 1 — консоль участвует в отчётах, 0 — выключена галочкой «Использовать». */
+  in_use: number;
 }
 
 export interface UpsertInput {
@@ -48,6 +50,28 @@ export function listAccounts(db: Db, ownerId?: string): AccountRow[] {
   return db
     .prepare('SELECT * FROM google_accounts ORDER BY added_at ASC, rowid ASC')
     .all() as AccountRow[];
+}
+
+/**
+ * Консоли, из которых строятся отчёты: рабочие (status = active) и не выключенные
+ * галочкой «Использовать». Страница Accounts по-прежнему показывает все.
+ */
+export function listReportAccounts(db: Db): AccountRow[] {
+  return listAccounts(db).filter((a) => a.status === 'active' && a.in_use !== 0);
+}
+
+/** Включить или выключить одну консоль. */
+export function setAccountInUse(db: Db, id: string, inUse: boolean): void {
+  db.prepare('UPDATE google_accounts SET in_use = ? WHERE id = ?').run(inUse ? 1 : 0, id);
+}
+
+/** Оставить включёнными ровно эти консоли (пустой список выключает все). */
+export function setAccountsInUse(db: Db, ids: string[]): void {
+  const keep = new Set(ids);
+  const update = db.prepare('UPDATE google_accounts SET in_use = ? WHERE id = ?');
+  db.transaction(() => {
+    for (const a of listAccounts(db)) update.run(keep.has(a.id) ? 1 : 0, a.id);
+  })();
 }
 
 export function getAccount(db: Db, id: string): AccountRow | undefined {

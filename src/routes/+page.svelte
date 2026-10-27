@@ -1,7 +1,27 @@
 <script lang="ts">
   import type { PageData } from './$types';
+  import { invalidateAll } from '$app/navigation';
   let { data }: { data: PageData } = $props();
   const isAdmin = $derived(data.user?.role === 'admin');
+
+  let pending = $state<string | null>(null);
+  async function setInUse(id: string, inUse: boolean) {
+    pending = id;
+    try {
+      const res = await fetch('/accounts/in-use', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id, inUse })
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await invalidateAll();
+    } catch (e) {
+      alert(`Не сохранилось: ${(e as Error).message}`);
+    } finally {
+      pending = null;
+    }
+  }
+  const inUseCount = $derived(data.accounts.filter((a) => a.in_use !== 0).length);
 
   function fmtDate(unix: number) {
     return new Date(unix * 1000).toISOString().slice(0, 10);
@@ -43,11 +63,12 @@
     </div>
   {:else}
     <section class="pane">
-      <div class="pane-head">Accounts <span class="aside app-num">{data.accounts.length}</span></div>
+      <div class="pane-head">Accounts <span class="aside app-num">{#if isAdmin}в отчётах {inUseCount} из&nbsp;{/if}{data.accounts.length}</span></div>
       <div class="overflow-x-auto">
       <table class="app-table">
         <thead>
           <tr>
+            {#if isAdmin}<th class="w-px" title="Снятая галочка убирает консоль из всех отчётов и из MCP">Использовать</th>{/if}
             <th>Email</th>
             {#if isAdmin}<th class="hidden sm:table-cell">Label</th>{/if}
             <th>Status</th>
@@ -58,7 +79,18 @@
         </thead>
         <tbody>
           {#each data.accounts as a (a.id)}
-            <tr>
+            <tr class={isAdmin && a.in_use === 0 ? 'opacity-60' : ''}>
+              {#if isAdmin}
+              <td class="text-center">
+                <input
+                  type="checkbox"
+                  aria-label="Использовать {a.email} в отчётах"
+                  checked={a.in_use !== 0}
+                  disabled={pending === a.id}
+                  onchange={(e) => setInUse(a.id, e.currentTarget.checked)}
+                />
+              </td>
+              {/if}
               <td class="break-all font-medium text-ink">{a.email}</td>
               {#if isAdmin}
               <td class="hidden sm:table-cell">

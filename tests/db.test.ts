@@ -37,7 +37,7 @@ describe('db', () => {
     const names = cols.map((c) => c.name).sort();
     expect(names).toEqual(
       [
-        'access_token', 'added_at', 'email', 'expires_at', 'id', 'label',
+        'access_token', 'added_at', 'email', 'expires_at', 'id', 'in_use', 'label',
         'last_error', 'owner_id', 'refresh_token', 'scope', 'status'
       ].sort()
     );

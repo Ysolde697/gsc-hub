@@ -5,7 +5,7 @@ import { INSPECT_LIMIT, mapSettledLimit } from './concurrency';
 import { getGoogleClientId, getGoogleClientSecret } from './config';
 import {
   type AccountRow,
-  listAccounts,
+  listReportAccounts,
   markError,
   markRevoked,
   updateTokens
@@ -149,7 +149,7 @@ export async function listSitesForAccount(
 }
 
 export async function listSitesForAllAccounts(db: Db): Promise<SitesFanOut> {
-  const accounts = listAccounts(db).filter((a) => a.status === 'active');
+  const accounts = listReportAccounts(db);
   const sites: SiteRow[] = [];
   const errors: SitesFanOut['errors'] = [];
 
@@ -652,7 +652,7 @@ export interface TodayTotals {
 // the only honest thing to do with the number is show it.
 export async function fetchTodayTotals(db: Db): Promise<TodayTotals> {
   const date = gscToday();
-  const accounts = listAccounts(db).filter((a) => a.status === 'active');
+  const accounts = listReportAccounts(db);
   const errors: DailyBreakdownFanOut['errors'] = [];
   const pairs: { acc: AccountRow; site: SiteRow }[] = [];
 
@@ -720,7 +720,7 @@ export async function fetchDailyBreakdown(
   db: Db,
   days: number
 ): Promise<DailyBreakdownFanOut> {
-  const accounts = listAccounts(db).filter((a) => a.status === 'active');
+  const accounts = listReportAccounts(db);
 
   const perAccount = await Promise.allSettled(
     accounts.map((a) =>
@@ -846,7 +846,7 @@ export async function fetchPerSiteQueries(
   days: number,
   perSiteLimit: number = 1000
 ): Promise<PerSiteQueriesFanOut> {
-  const accounts = listAccounts(db).filter((a) => a.status === 'active');
+  const accounts = listReportAccounts(db);
 
   const perAccount = await Promise.allSettled(
     accounts.map((a) =>
@@ -925,7 +925,7 @@ export async function fetchPerSitePages(
   days: number,
   perSiteLimit: number = 200
 ): Promise<PerSitePagesFanOut> {
-  const accounts = listAccounts(db).filter((a) => a.status === 'active');
+  const accounts = listReportAccounts(db);
 
   const perAccount = await Promise.allSettled(
     accounts.map((a) =>
@@ -1000,7 +1000,7 @@ export async function listSitesWithSummary(
   db: Db,
   days = 28
 ): Promise<SitesWithSummaryFanOut> {
-  const accounts = listAccounts(db).filter((a) => a.status === 'active');
+  const accounts = listReportAccounts(db);
 
   // Step 1: fan-out sites.list per account, capture (acc, site[]) and per-account errors.
   const perAccount = await Promise.allSettled(
@@ -1091,7 +1091,7 @@ export async function fetchQueryHistory(
   query: string,
   days: number = 480
 ): Promise<QueryHistoryFanOut> {
-  const accounts = listAccounts(db).filter((a) => a.status === 'active');
+  const accounts = listReportAccounts(db);
 
   const perAccount = await Promise.allSettled(
     accounts.map((a) =>
@@ -1233,7 +1233,7 @@ export async function fetchPortfolioDecayPages(
   offsetDays?: number,
   rowLimit: number = 5000
 ): Promise<PortfolioDecayFanOut> {
-  const accounts = listAccounts(db).filter((a) => a.status === 'active');
+  const accounts = listReportAccounts(db);
 
   const perAccount = await Promise.allSettled(
     accounts.map((a) => listSitesForAccount(db, a).then((sites) => ({ acc: a, sites })))
@@ -1312,7 +1312,7 @@ export interface PortfolioDailyFanOut {
 // every connected account. Hidden sites are excluded so the pulse matches the visible
 // list. Same call count as the sites list — call lazily, not on the main render path.
 export async function fetchPortfolioDaily(db: Db, days: number = 180): Promise<PortfolioDailyFanOut> {
-  const accounts = listAccounts(db).filter((a) => a.status === 'active');
+  const accounts = listReportAccounts(db);
   const hidden = new Set(listHiddenSites(db));
 
   const perAccount = await Promise.allSettled(

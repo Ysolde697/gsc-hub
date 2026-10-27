@@ -233,6 +233,11 @@ export function openDb(path: string): Db {
   if (!cols.some((c) => c.name === 'owner_id')) {
     db.exec('ALTER TABLE google_accounts ADD COLUMN owner_id TEXT');
   }
+  // Галочка «Использовать»: снятая консоль не попадает в общие отчёты и в MCP.
+  // По умолчанию 1, чтобы уже подключённые консоли работали как раньше.
+  if (!cols.some((c) => c.name === 'in_use')) {
+    db.exec('ALTER TABLE google_accounts ADD COLUMN in_use INTEGER NOT NULL DEFAULT 1');
+  }
 
   // Область ключа: JSON-массив siteUrl. Пусто — все сайты, поэтому ключи,
   // выданные до появления колонки, продолжают работать как раньше.
