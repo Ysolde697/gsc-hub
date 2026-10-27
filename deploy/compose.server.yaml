@@ -1,0 +1,31 @@
+# Запуск на сервере: панель + Caddy (сам получает HTTPS-сертификат).
+# Настройки берутся из /opt/gsc/.env, который пишет cloud-init.yaml.
+services:
+  gsc:
+    build: ..
+    container_name: gsc
+    restart: unless-stopped
+    env_file:
+      - /opt/gsc/.env
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3000
+      DB_PATH: /data/gsc-hub.db
+      AUTH_TRUST_HOST: "true"
+    volumes:
+      - /opt/gsc/data:/data
+
+  caddy:
+    image: caddy:2.8
+    container_name: caddy
+    restart: unless-stopped
+    env_file:
+      - /opt/gsc/.env
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - /opt/gsc/caddy:/data
+    depends_on:
+      - gsc
