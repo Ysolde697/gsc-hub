@@ -1,0 +1,60 @@
+// Per-site branded-keyword overrides. Config, not GSC data — one row per site.
+// Default is derived from the domain; the detail page can override it.
+
+import type { Db } from './db';
+import { siteToHost } from './bing';
+import { hostToUnicode } from './idn';
+import { getDomainWithoutSuffix, parse as parseHost } from 'tldts';
+
+// "https://www.example.com/" | "sc-domain:example.co.uk" → "example"
+//
+// The term this returns is matched as a substring against every query, so a
+// wrong answer is not cosmetic: "co", taken from example.co.uk, marks "discount
+// code" as branded and "example login" as not. Hence the Public Suffix List.
+export function defaultBrandFromDomain(siteUrl: string): string {
+  // Unicode first: new URL() hands back the ASCII form of an international
+  // hostname, and a term of "xn--e1afmkfd" matches nothing anyone types.
+  const host = hostToUnicode(siteToHost(siteUrl)).replace(/^www\./, '');
+
+  // An address has no brand, and the fallback below would happily return an
+  // octet — "168" matches a lot of queries.
+  if (parseHost(host).isIp) return host;
+
+  // Private suffixes too: for user.github.io the brand is "user", not "github".
+  const registrableLabel = getDomainWithoutSuffix(host, { allowPrivateDomains: true });
+  if (registrableLabel) return registrableLabel;
+
+  // Hosts with no public suffix at all — sc-domain:internal, an intranet name.
+  const parts = host.split('.').filter(Boolean);
+  if (parts.length >= 2) return parts[parts.length - 2];
+  return parts[0] ?? host;
+}
+
+export function getBrandedTerms(db: Db, siteUrl: string): string[] {
+  const row = db
+    .prepare('SELECT terms FROM site_branded_keywords WHERE site_url = ?')
+    .get(siteUrl) as { terms: string } | undefined;
+  if (row) {
+    try {
+      const arr = JSON.parse(row.terms);
+      if (Array.isArray(arr) && arr.length) return arr.map(String);
+    } catch {
+      /* fall through to default */
+    }
+  }
+  return [defaultBrandFromDomain(siteUrl)];
+}
+
+// Persist an override. An empty list clears it (reverts to the domain default).
+export function setBrandedTerms(db: Db, siteUrl: string, terms: string[]): void {
+  const clean = terms.map((t) => t.trim()).filter(Boolean);
+  if (clean.length === 0) {
+    db.prepare('DELETE FROM site_branded_keywords WHERE site_url = ?').run(siteUrl);
+    return;
+  }
+  db.prepare(
+    `INSERT INTO site_branded_keywords (site_url, terms, updated_at)
+     VALUES (?, ?, ?)
+     ON CONFLICT(site_url) DO UPDATE SET terms = excluded.terms, updated_at = excluded.updated_at`
+  ).run(siteUrl, JSON.stringify(clean), Date.now());
+}
