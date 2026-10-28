@@ -1480,7 +1480,7 @@ export async function searchKeywordAcrossSites(
   q: string,
   mode: 'contains' | 'equals' = 'contains',
   days = 28
-): Promise<{ hits: KeywordHit[]; sites: number; errors: number }> {
+): Promise<{ hits: KeywordHit[]; sites: number; errors: number; errorList: { site: string; reason: string }[] }> {
   const accounts = listAccounts(db).filter((a) => a.status === 'active');
   const perAccount = await Promise.allSettled(accounts.map((a) => listSitesForAccount(db, a)));
   const pairs: { acc: AccountRow; site: SiteRow }[] = [];
@@ -1500,9 +1500,11 @@ export async function searchKeywordAcrossSites(
   // Один домен может быть в двух property (sc-domain: и https://): берём строку с бо́льшими показами.
   const best = new Map<string, KeywordHit>();
   let errors = 0;
+  const errorList: { site: string; reason: string }[] = [];
   perSite.forEach((r, i) => {
     if (r.status !== 'fulfilled') {
       errors++;
+      errorList.push({ site: pairs[i].site.siteUrl, reason: String((r.reason as Error)?.message ?? r.reason).slice(0, 160) });
       return;
     }
     const { acc, site } = pairs[i];
@@ -1526,5 +1528,5 @@ export async function searchKeywordAcrossSites(
     }
   });
   const hits = [...best.values()].sort((a, b) => a.position - b.position || b.impressions - a.impressions);
-  return { hits, sites: pairs.length, errors };
+  return { hits, sites: pairs.length, errors, errorList };
 }

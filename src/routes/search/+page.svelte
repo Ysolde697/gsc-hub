@@ -12,7 +12,7 @@
   let mode = $state(page.url.searchParams.get('mode') === 'equals' ? 'equals' : 'contains');
   let days = $state(Number(page.url.searchParams.get('days')) || 28);
   let rows = $state<Row[]>([]);
-  let info = $state<{ total: number; sites: number; errors: number } | null>(null);
+  let info = $state<{ total: number; sites: number; errors: number; errorList: { site: string; reason: string }[] } | null>(null);
   let loading = $state(false);
   let err = $state<string | null>(null);
   let sort = $state<'position' | 'impressions' | 'clicks' | 'host'>('position');
@@ -31,7 +31,7 @@
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.message ?? `HTTP ${res.status}`);
       rows = data.rows;
-      info = { total: data.total, sites: data.sites, errors: data.errors };
+      info = { total: data.total, sites: data.sites, errors: data.errors, errorList: data.errorList ?? [] };
     } catch (e) {
       err = (e as Error).message;
       rows = [];
@@ -93,7 +93,7 @@
     <section class="pane">
       <div class="pane-head flex flex-wrap items-center gap-3">
         <span>Найдено: {fmt(info.total)} строк на {siteCount} сайтах</span>
-        {#if info.errors}<span class="text-xs font-normal text-warn">{info.errors} сайтов не ответили</span>{/if}
+        {#if info.errors}<span class="text-xs font-normal normal-case text-warn" title={info.errorList.map((e) => `${e.site}: ${e.reason}`).join('\n')}>{info.errors} сайтов не ответили (наведите — причина)</span>{/if}
         <span class="ml-auto flex items-center gap-1 text-xs font-normal normal-case">
           Сортировка:
           {#each [['position', 'позиция'], ['impressions', 'показы'], ['clicks', 'клики'], ['host', 'сайт']] as [k, label] (k)}
