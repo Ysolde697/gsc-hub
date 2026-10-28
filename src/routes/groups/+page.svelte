@@ -3,7 +3,7 @@
   import { siteHostname } from '$lib/utils/url-filters';
   import OtherSitesInline from '$lib/components/OtherSitesInline.svelte';
   import type { OtherOwner, OtherLink } from '$lib/group-items.svelte';
-  import { goto } from '$app/navigation';
+  import { goto, invalidateAll } from '$app/navigation';
   import type { PageData, ActionData } from './$types';
   let { data, form }: { data: PageData; form: ActionData } = $props();
 
@@ -66,6 +66,50 @@
     return k ? `/groups/open?g=${group?.id}&site=${encodeURIComponent(k.open.siteUrl)}&acc=${encodeURIComponent(k.open.accountId)}` : null;
   };
   let editorOpen = $state(false);
+
+  // Убрать ключ у другого сайта прямо из колонки «Другие сайты».
+  async function removeOther(l: OtherLink) {
+    if (!l.itemId) return;
+    const res = await fetch('/groups/items', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'removeById', groupId: l.groupId, itemId: l.itemId })
+    });
+    if (!res.ok) {
+      alert('Не удалилось: ' + ((await res.json().catch(() => ({})))?.message ?? res.status));
+      return;
+    }
+    othersKey = '';
+    await invalidateAll();
+  }
+
+  // Сортировка таблицы ТЗ по клику на заголовок; повторный клик — обратный порядок.
+  type SortKey = 'site' | 'kind' | 'query' | 'page' | 'qty' | 'position' | 'impressions' | 'clicks';
+  let tzSort = $state<SortKey | null>(null);
+  let tzDir = $state<1 | -1>(1);
+  function sortTz(k: SortKey) {
+    if (tzSort === k) tzDir = tzDir === 1 ? -1 : 1;
+    else {
+      tzSort = k;
+      // Числа — сразу от больших к меньшим, позиция и текст — по возрастанию.
+      tzDir = ['qty', 'impressions', 'clicks'].includes(k) ? -1 : 1;
+    }
+  }
+  const tzItems = $derived.by(() => {
+    if (!tzSort) return data.items;
+    const k = tzSort;
+    const val = (i: (typeof data.items)[number]): string | number | null =>
+      k === 'site' ? siteHostname(i.siteUrl) : k === 'kind' ? i.kind : k === 'query' ? i.query : k === 'page' ? i.page : i[k];
+    return [...data.items].sort((a, b) => {
+      const x = val(a), y = val(b);
+      if (x === null && y === null) return 0;
+      if (x === null) return 1; // пустые — всегда вниз
+      if (y === null) return -1;
+      const c = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'ru');
+      return c * tzDir;
+    });
+  });
+  const arrow = (k: SortKey) => (tzSort === k ? (tzDir === 1 ? ' ↑' : ' ↓') : '');
 
   // «Другие сайты» в ТЗ: сначала быстро — ссылки из групп, затем позиции из Google.
   let others = $state<Record<string, { owners: OtherOwner[]; links: OtherLink[] }>>({});
@@ -338,9 +382,9 @@
           {:else}
             <div class="overflow-x-auto rounded border border-line">
               <table class="app-table">
-                <thead><tr><th>Сайт</th><th>Тип</th><th>Анкор</th><th>Страница</th><th class="num">Ссылок</th><th class="num">Pos</th><th class="num">Impr</th><th class="num">Clicks</th><th title="Сколько ссылок на этот ключ взято для других ваших сайтов; ⚠ — другой сайт стоит выше">Другие сайты</th><th></th></tr></thead>
+                <thead><tr><th class="cursor-pointer select-none hover:text-ink" onclick={() => sortTz('site')}>Сайт{arrow('site')}</th><th class="cursor-pointer select-none hover:text-ink" onclick={() => sortTz('kind')}>Тип{arrow('kind')}</th><th class="cursor-pointer select-none hover:text-ink" onclick={() => sortTz('query')}>Анкор{arrow('query')}</th><th class="cursor-pointer select-none hover:text-ink" onclick={() => sortTz('page')}>Страница{arrow('page')}</th><th class="num cursor-pointer select-none hover:text-ink" onclick={() => sortTz('qty')}>Ссылок{arrow('qty')}</th><th class="num cursor-pointer select-none hover:text-ink" onclick={() => sortTz('position')}>Pos{arrow('position')}</th><th class="num cursor-pointer select-none hover:text-ink" onclick={() => sortTz('impressions')}>Impr{arrow('impressions')}</th><th class="num cursor-pointer select-none hover:text-ink" onclick={() => sortTz('clicks')}>Clicks{arrow('clicks')}</th><th title="Сколько ссылок на этот ключ взято для других ваших сайтов; ⚠ — другой сайт стоит выше">Другие сайты</th><th></th></tr></thead>
                 <tbody>
-                  {#each data.items as it (it.id)}
+                  {#each tzItems as it (it.id)}
                     <tr>
                       <td class="whitespace-nowrap text-ink-2"><span class="pii">{siteHostname(it.siteUrl)}</span></td>
                       <td class="text-xs text-ink-3">{it.kind === 'naked' ? 'Безанкор' : 'Анкор'}</td>
@@ -363,7 +407,7 @@
                       <td>
                         {#if it.kind === 'anchor'}
                           {@const o = others[`${it.siteUrl}\n${it.query}`]}
-                          <OtherSitesInline owners={o?.owners ?? []} links={o?.links ?? []} position={it.position} loading={othersLoading} />
+                          <OtherSitesInline owners={o?.owners ?? []} links={o?.links ?? []} position={it.position} loading={othersLoading} onremove={removeOther} />
                         {/if}
                       </td>
                       <td class="text-right">

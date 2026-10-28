@@ -208,22 +208,26 @@ export interface QueryLink {
   groupName: string;
   qty: number;
   at: number;
+  itemId: number;
+  /** Группа зафиксирована — удалять нельзя. */
+  fixed: boolean;
 }
 
 /** Анкорные ссылки по ключу на всех сайтах: ключ (нормальная форма) → где и сколько. */
 export function linksByQuery(db: Db): Map<string, QueryLink[]> {
   const rows = db
     .prepare(
-      `SELECT i.site_url, i.query, i.qty, g.id, g.name, COALESCE(g.fixed_at, g.created_at) AS at
+      `SELECT i.id AS item_id, i.site_url, i.query, i.qty, g.id, g.name, g.fixed_at,
+              COALESCE(g.fixed_at, g.created_at) AS at
          FROM site_group_items i JOIN site_groups g ON g.id = i.group_id
         WHERE i.kind = 'anchor' ORDER BY g.created_at, g.id`
     )
-    .all() as { site_url: string; query: string; qty: number; id: number; name: string; at: number }[];
+    .all() as { item_id: number; site_url: string; query: string; qty: number; id: number; name: string; fixed_at: number | null; at: number }[];
   const out = new Map<string, QueryLink[]>();
   for (const r of rows) {
     const k = foldQuery(r.query);
     const list = out.get(k) ?? [];
-    list.push({ host: hostKey(r.site_url), groupId: r.id, groupName: r.name, qty: r.qty, at: r.at });
+    list.push({ host: hostKey(r.site_url), groupId: r.id, groupName: r.name, qty: r.qty, at: r.at, itemId: r.item_id, fixed: !!r.fixed_at });
     out.set(k, list);
   }
   return out;

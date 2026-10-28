@@ -249,7 +249,7 @@ export async function toggleItem(r: ItemRow) {
 
 // ─── «Мои другие сайты»: кто ещё из ваших сайтов виден по ключу ────────────────
 export interface OtherOwner { host: string; position: number; impressions: number; clicks: number }
-export interface OtherLink { host: string; groupId: number; groupName: string; qty: number; at: number }
+export interface OtherLink { host: string; groupId: number; groupName: string; qty: number; at: number; itemId?: number; fixed?: boolean }
 
 export const comp = $state({
   byQuery: {} as Record<string, { owners: OtherOwner[]; links: OtherLink[] }>,

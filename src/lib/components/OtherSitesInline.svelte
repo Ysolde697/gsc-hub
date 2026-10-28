@@ -6,19 +6,28 @@
     owners = [],
     links = [],
     position = null,
-    loading = false
-  }: { owners?: OtherOwner[]; links?: OtherLink[]; position?: number | null; loading?: boolean } = $props();
+    loading = false,
+    onremove
+  }: {
+    owners?: OtherOwner[];
+    links?: OtherLink[];
+    position?: number | null;
+    loading?: boolean;
+    /** Если задано — у купленных строк крестик: убрать этот ключ у того сайта из группы. */
+    onremove?: (l: OtherLink) => void;
+  } = $props();
 
   const rows = $derived.by(() => {
-    const m = new Map<string, { host: string; qty: number; groups: string[]; pos: number | null }>();
+    const m = new Map<string, { host: string; qty: number; groups: string[]; pos: number | null; items: OtherLink[] }>();
     for (const l of links) {
-      const e = m.get(l.host) ?? { host: l.host, qty: 0, groups: [], pos: null };
+      const e = m.get(l.host) ?? { host: l.host, qty: 0, groups: [], pos: null, items: [] };
       e.qty += l.qty;
+      e.items.push(l);
       if (!e.groups.includes(l.groupName)) e.groups.push(l.groupName);
       m.set(l.host, e);
     }
     for (const o of owners) {
-      const e = m.get(o.host) ?? { host: o.host, qty: 0, groups: [], pos: null };
+      const e = m.get(o.host) ?? { host: o.host, qty: 0, groups: [], pos: null, items: [] };
       e.pos = o.position;
       m.set(o.host, e);
     }
@@ -40,6 +49,17 @@
         {higher(r.pos) ? '⚠ ' : ''}<span class="pii">{r.host}</span>
         {#if r.qty}— <b>{r.qty} шт</b> <span class="font-normal text-ink-3">({r.groups.join(', ')})</span>{/if}
         {#if higher(r.pos)}· выше: поз. {r.pos!.toFixed(1)}{/if}
+        {#if onremove}
+          {#each r.items.filter((x) => x.itemId && !x.fixed) as l (l.itemId)}
+            <button
+              type="button"
+              class="ml-0.5 rounded px-1 font-normal text-ink-3 hover:bg-bad/10 hover:text-bad"
+              title="Убрать «{l.qty} шт» у {r.host} из группы {l.groupName}"
+              aria-label="Убрать ссылки у {r.host} из группы {l.groupName}"
+              onclick={() => onremove(l)}
+            >×{r.items.length > 1 ? ` ${l.groupName}` : ''}</button>
+          {/each}
+        {/if}
       </div>
     {/each}
     {#if rows.length > SHOW}
