@@ -55,7 +55,8 @@
   }
   const SHOW = 6;
   let drafts = $state<Record<string, number>>({});
-  const draft = (host: string) => drafts[host] ?? 2;
+  // Пустое поле, пока не вписали число: заготовку не спутать с уже добавленным.
+  const draft = (host: string): number | null => drafts[host] ?? null;
   const clamp = (n: number) => Math.max(1, Math.min(1000, Math.round(n) || 1));
 </script>
 
@@ -85,10 +86,30 @@
             {#if editable && onremove && mine.itemId}<button type="button" class="rounded px-1 text-ink-3 hover:bg-bad/10 hover:text-bad" title="Убрать у {r.host} из этой группы" onclick={() => onremove(mine)}>×</button>{/if}
           </span>
         {:else if editable && onadd && r.owner?.page && r.owner.siteUrl}
-          <span class="flex items-center gap-0.5 font-normal text-ink-3" title="Ещё не добавлено. Укажите, сколько ссылок, и нажмите + — ключ добавится для {r.host} в эту группу">
-            добавить
-            <input type="number" min="1" max="1000" value={draft(r.host)} class="input h-6 w-12 border-dashed px-1 text-right text-[11px] {r.host in drafts ? 'text-ink' : 'text-ink-4'}" aria-label="Сколько ссылок для {r.host}" onchange={(e) => (drafts = { ...drafts, [r.host]: clamp(Number(e.currentTarget.value)) })} />шт
-            <button type="button" class="btn btn-sec h-6 px-1.5 text-[11px]" title="Добавить этот ключ для {r.host} в эту группу ({r.owner.page})" onclick={() => onadd(r.owner!, query, draft(r.host))}>+</button>
+          <span class="flex items-center gap-0.5 font-normal text-ink-3" title="Ещё не добавлено. Впишите, сколько ссылок, и нажмите + — ключ добавится для {r.host} в эту группу">
+            <input
+              type="number"
+              min="1"
+              max="1000"
+              placeholder="шт"
+              value={draft(r.host) ?? ''}
+              class="input h-6 w-12 border-dashed px-1 text-right text-[11px]"
+              aria-label="Сколько ссылок для {r.host}"
+              oninput={(e) => {
+                const v = e.currentTarget.value.trim();
+                const next = { ...drafts };
+                if (v === '') delete next[r.host];
+                else next[r.host] = clamp(Number(v));
+                drafts = next;
+              }}
+            />
+            <button
+              type="button"
+              class="btn btn-sec h-6 px-1.5 text-[11px]"
+              disabled={draft(r.host) === null}
+              title={draft(r.host) === null ? 'Сначала впишите количество' : `Добавить ${draft(r.host)} шт для ${r.host} в эту группу (${r.owner.page})`}
+              onclick={() => { const q = draft(r.host); if (q !== null) onadd(r.owner!, query, q); }}
+            >+</button>
           </span>
         {/if}
       </div>
