@@ -84,21 +84,28 @@
       : []
   );
 
-  // Убрать ключ у другого сайта прямо из колонки «Другие сайты».
-  async function removeOther(l: OtherLink) {
-    if (!l.itemId) return;
-    const res = await fetch('/groups/items', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ action: 'removeById', groupId: l.groupId, itemId: l.itemId })
-    });
+  // «Другие сайты»: убрать, поменять количество или добавить ключ для другого сайта.
+  async function itemsPost(body: unknown): Promise<boolean> {
+    const res = await fetch('/groups/items', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
     if (!res.ok) {
-      alert('Не удалилось: ' + ((await res.json().catch(() => ({})))?.message ?? res.status));
-      return;
+      alert('Не получилось: ' + ((await res.json().catch(() => ({})))?.message ?? res.status));
+      return false;
     }
     othersKey = '';
     await invalidateAll();
+    return true;
   }
+  const removeOther = (l: OtherLink) => l.itemId && itemsPost({ action: 'removeById', groupId: l.groupId, itemId: l.itemId });
+  const qtyOther = (l: OtherLink, qty: number) => l.itemId && itemsPost({ action: 'qtyById', groupId: l.groupId, itemId: l.itemId, qty });
+  const addOther = (o: OtherOwner, query: string, qty: number) =>
+    group &&
+    o.siteUrl &&
+    o.page &&
+    itemsPost({
+      action: 'add',
+      groupId: group.id,
+      item: { siteUrl: o.siteUrl, query, page: o.page, position: o.position, impressions: o.impressions, clicks: o.clicks, qty }
+    });
 
   // Сортировка таблицы ТЗ по клику на заголовок; повторный клик — обратный порядок.
   type SortKey = 'site' | 'kind' | 'query' | 'page' | 'qty' | 'position' | 'impressions' | 'clicks';
@@ -424,7 +431,7 @@
                       <td>
                         {#if it.kind === 'anchor'}
                           {@const o = others[`${it.siteUrl}\n${it.query}`]}
-                          <OtherSitesInline owners={o?.owners ?? []} links={o?.links ?? []} position={it.position} loading={othersLoading} onremove={removeOther} />
+                          <OtherSitesInline owners={o?.owners ?? []} links={o?.links ?? []} position={it.position} loading={othersLoading} query={it.query} currentGroupId={group.id} editable={!group.fixedAt} onremove={removeOther} onqty={qtyOther} onadd={addOther} />
                         {/if}
                       </td>
                       <td class="text-right">

@@ -1416,6 +1416,8 @@ export async function fetchPortfolioDaily(db: Db, days: number = 180): Promise<P
 export interface QueryOwner {
   host: string;
   siteUrl: string;
+  /** Страница этого сайта с наибольшими показами по ключу. */
+  page: string;
   accountId: string;
   position: number;
   impressions: number;
@@ -1435,7 +1437,7 @@ export async function fetchQueryOwners(db: Db, days = 28): Promise<Map<string, Q
     });
     const { startDate, endDate } = gscDateRange(days);
     const perSite = await mapSettledLimit(pairs, ({ acc, site }) =>
-      searchAnalyticsQuery(db, acc, site.siteUrl, { startDate, endDate, dimensions: ['query'], rowLimit: 5000 })
+      searchAnalyticsQuery(db, acc, site.siteUrl, { startDate, endDate, dimensions: ['query', 'page'], rowLimit: 5000 })
     );
     // ключ → домен → лучшая строка (у домена может быть две property: sc-domain: и https://)
     const byQuery = new Map<string, Map<string, QueryOwner>>();
@@ -1449,7 +1451,7 @@ export async function fetchQueryOwners(db: Db, days = 28): Promise<Map<string, Q
         const hosts = byQuery.get(q) ?? new Map<string, QueryOwner>();
         const cur = hosts.get(host);
         if (!cur || row.impressions > cur.impressions) {
-          hosts.set(host, { host, siteUrl: site.siteUrl, accountId: acc.id, position: row.position, impressions: row.impressions, clicks: row.clicks });
+          hosts.set(host, { host, siteUrl: site.siteUrl, page: row.keys[1] ?? '', accountId: acc.id, position: row.position, impressions: row.impressions, clicks: row.clicks });
         }
         byQuery.set(q, hosts);
       }
