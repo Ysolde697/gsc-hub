@@ -6,6 +6,7 @@
   import BuyLinks from '$lib/components/BuyLinks.svelte';
   import GroupBar from '$lib/components/GroupBar.svelte';
   import GroupCell from '$lib/components/GroupCell.svelte';
+  import IntentBadge from '$lib/components/IntentBadge.svelte';
   import LastPlanCell from '$lib/components/LastPlanCell.svelte';
   import { loadGroupItems } from '$lib/group-items.svelte';
   import { onMount } from 'svelte';
@@ -473,6 +474,7 @@
                   {@render sortTh('site', 'Site')}
                   {@render sortTh('page', 'Page')}
                   {@render sortTh('query', 'Query')}
+                  <th title="Зелёный — конверсионный ключ, жёлтый — брендовый/коммерческий">Тип</th>
                   {@render sortTh('country', 'Geo')}
                   {@render sortTh('position', 'Pos', true)}
                   {@render sortTh('impressions', 'Impr', true)}
@@ -503,6 +505,7 @@
                     </td>
                     <td class="max-w-md text-ink-3"><a class="pii break-all hover:text-acc hover:underline" href={r.page} target="_blank" rel="noopener noreferrer" title="Открыть страницу">{r.page}</a></td>
                     <td class="font-medium"><span class="pii">{r.query}</span></td>
+                    <td><IntentBadge query={r.query} page={r.page} /></td>
                     <td class="app-num uppercase text-ink-3">{r.country || '—'}</td>
                     <td class="num app-num">{posf(r.position)}</td>
                     <td class="num app-num pii">{fmt(r.impressions)}</td>
@@ -535,7 +538,7 @@
                   {#if historyOpen === pairKey(r) && boughtFor(r)}
                     <tr class="bg-sunk">
                       <td></td>
-                      <td colspan="12" class="text-xs">
+                      <td colspan="13" class="text-xs">
                         {#each boughtFor(r)!.orders as o (o.orderId)}
                           <a
                             class="mr-4 text-acc hover:underline"

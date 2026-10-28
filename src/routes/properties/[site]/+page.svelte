@@ -10,6 +10,7 @@
   import SortCaret from '$lib/components/SortCaret.svelte';
   import GroupBar from '$lib/components/GroupBar.svelte';
   import GroupCell from '$lib/components/GroupCell.svelte';
+  import IntentBadge from '$lib/components/IntentBadge.svelte';
   import LastPlanCell from '$lib/components/LastPlanCell.svelte';
   import SiteLinkHistory from '$lib/components/SiteLinkHistory.svelte';
   import { loadGroupItems } from '$lib/group-items.svelte';
@@ -772,6 +773,7 @@
                       <thead>
                         <tr><th class="w-8"></th>
                           <th class="sort-th" aria-sort={sortAria('query')}><button type="button" class="hover:text-ink" onclick={() => sortBy('query')}>Query<SortCaret dir={sortArrow('query')} /></button></th>
+                          <th title="Зелёный — конверсионный ключ, жёлтый — брендовый/коммерческий">Тип</th>
                           <th class="sort-th" aria-sort={sortAria('page')}><button type="button" class="hover:text-ink" onclick={() => sortBy('page')}>Page<SortCaret dir={sortArrow('page')} /></button></th>
                           <th class="sort-th num" aria-sort={sortAria('position')}><button type="button" class="hover:text-ink" onclick={() => sortBy('position')}>Pos<SortCaret dir={sortArrow('position')} /></button></th>
                           <th class="sort-th num" aria-sort={sortAria('serp')}><button type="button" class="hover:text-ink" onclick={() => sortBy('serp')}>SERP<SortCaret dir={sortArrow('serp')} /></button></th>
@@ -791,6 +793,7 @@
                               <input type="checkbox" checked={selectedPairs.has(k)} onchange={() => togglePair(r.page, r.query)} aria-label="Выделить строку" />
                             </td>
                             <td class="font-medium"><span class="pii">{r.query}</span></td>
+                            <td><IntentBadge query={r.query} page={r.page} brandTerms={data.brandedTerms ?? []} /></td>
                             <td class="max-w-md text-ink-3"><div class="flex items-center gap-1"><a class="pii min-w-0 break-all hover:text-acc hover:underline" href={r.page} target="_blank" rel="noopener noreferrer" title="Открыть страницу">{r.page}</a><button class="btn btn-ghost btn-sm shrink-0" title="Исключить этот URL для домена" aria-label="Исключить {r.page}" disabled={exclusionBusy} onclick={() => updateExclusions('POST', { pattern: r.page, kind: 'exact' })}>×</button></div></td>
                             <td class="num app-num">{pos(r.position)}</td>
                             {@render serpCell(r.query)}
@@ -820,7 +823,7 @@
                           {#if historyOpen === k && boughtFor(r.page, r.query)}
                             <tr class="bg-sunk">
                               <td></td>
-                              <td colspan="11" class="text-xs">
+                              <td colspan="12" class="text-xs">
                                 {#each boughtFor(r.page, r.query)!.orders as o (o.orderId)}
                                   <a class="mr-4 text-acc hover:underline"
                                     href="/magiclinks/{o.orderId}?url={encodeURIComponent(r.page)}&q={encodeURIComponent(r.query)}">
