@@ -3,6 +3,7 @@
   import { siteHostname } from '$lib/utils/url-filters';
   import OtherSitesInline from '$lib/components/OtherSitesInline.svelte';
   import SortTh from '$lib/components/SortTh.svelte';
+  import SortCaret from '$lib/components/SortCaret.svelte';
   import { TableSort } from '$lib/table-sort.svelte';
   import type { OtherOwner, OtherLink } from '$lib/group-items.svelte';
   import { goto, invalidateAll } from '$app/navigation';
@@ -398,7 +399,7 @@
           {:else}
             <div class="overflow-x-auto rounded border border-line">
               <table class="app-table">
-                <thead><tr><th class="cursor-pointer select-none hover:text-ink" onclick={() => sortTz('site')}>Сайт{arrow('site')}</th><th class="cursor-pointer select-none hover:text-ink" onclick={() => sortTz('kind')}>Тип{arrow('kind')}</th><th class="cursor-pointer select-none hover:text-ink" onclick={() => sortTz('query')}>Анкор{arrow('query')}</th><th class="cursor-pointer select-none hover:text-ink" onclick={() => sortTz('page')}>Страница{arrow('page')}</th><th class="num cursor-pointer select-none hover:text-ink" onclick={() => sortTz('qty')}>Ссылок{arrow('qty')}</th><th class="num cursor-pointer select-none hover:text-ink" onclick={() => sortTz('position')}>Pos{arrow('position')}</th><th class="num cursor-pointer select-none hover:text-ink" onclick={() => sortTz('impressions')}>Impr{arrow('impressions')}</th><th class="num cursor-pointer select-none hover:text-ink" onclick={() => sortTz('clicks')}>Clicks{arrow('clicks')}</th><th title="Сколько ссылок на этот ключ взято для других ваших сайтов; ⚠ — другой сайт стоит выше">Другие сайты</th><th></th></tr></thead>
+                <thead><tr><th class="cursor-pointer select-none hover:text-ink" onclick={() => sortTz('site')}>Сайт<SortCaret dir={tzSort === 'site' ? (tzDir === 1 ? 'asc' : 'desc') : ''} /></th><th class="cursor-pointer select-none hover:text-ink" onclick={() => sortTz('kind')}>Тип<SortCaret dir={tzSort === 'kind' ? (tzDir === 1 ? 'asc' : 'desc') : ''} /></th><th class="cursor-pointer select-none hover:text-ink" onclick={() => sortTz('query')}>Анкор<SortCaret dir={tzSort === 'query' ? (tzDir === 1 ? 'asc' : 'desc') : ''} /></th><th class="cursor-pointer select-none hover:text-ink" onclick={() => sortTz('page')}>Страница<SortCaret dir={tzSort === 'page' ? (tzDir === 1 ? 'asc' : 'desc') : ''} /></th><th class="num cursor-pointer select-none hover:text-ink" onclick={() => sortTz('qty')}>Ссылок<SortCaret dir={tzSort === 'qty' ? (tzDir === 1 ? 'asc' : 'desc') : ''} /></th><th class="num cursor-pointer select-none hover:text-ink" onclick={() => sortTz('position')}>Pos<SortCaret dir={tzSort === 'position' ? (tzDir === 1 ? 'asc' : 'desc') : ''} /></th><th class="num cursor-pointer select-none hover:text-ink" onclick={() => sortTz('impressions')}>Impr<SortCaret dir={tzSort === 'impressions' ? (tzDir === 1 ? 'asc' : 'desc') : ''} /></th><th class="num cursor-pointer select-none hover:text-ink" onclick={() => sortTz('clicks')}>Clicks<SortCaret dir={tzSort === 'clicks' ? (tzDir === 1 ? 'asc' : 'desc') : ''} /></th><th title="Сколько ссылок на этот ключ взято для других ваших сайтов; ⚠ — другой сайт стоит выше">Другие сайты</th><th></th></tr></thead>
                 <tbody>
                   {#each tzItems as it (it.id)}
                     <tr>
