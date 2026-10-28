@@ -42,11 +42,20 @@ export const GET: RequestHandler = async ({ params, url, locals }) => {
   if (mask.length > 2000) throw error(400, 'URL mask is too long');
   const strikingRows = qp.filter((r) => !urlExcluded(r.page, exclusions) && (!mask || (include ? urlMatchesMask(r.page, mask) : !urlMatchesMask(r.page, mask))));
 
+  // Диапазон Striking с переключателей над таблицей: позиции 4–20 / 4–50 / все
+  // и показов от 10 / 1. Без параметров — обычные 4–20 и от 10 показов.
+  const posMaxRaw = Number(url.searchParams.get('posMax') ?? '20');
+  const posMax = [20, 50, 0].includes(posMaxRaw) ? posMaxRaw : 20;
+  const minImprRaw = Number(url.searchParams.get('minImpr') ?? '10');
+  const minImpressions = [10, 1].includes(minImprRaw) ? minImprRaw : 10;
+  const range = { posMin: posMax === 0 ? 1 : 4, posMax, minImpressions };
+
   // Потолок на один сайт выше дефолтного: за 60-480 дней в striking легко
   // набирается больше сотни запросов, и обрезать их молча — врать о картине.
   return json({
     days,
-    striking: computeStriking(strikingRows, 300),
+    striking: computeStriking(strikingRows, posMax === 0 ? 2000 : 1000, range),
+    strikingRange: range,
     cannibalization: computeCannibalization(qp, 200),
     ctr: computeCtrBenchmark(qp, 200),
     branded: splitBranded(aggregateByQuery(qp), terms),

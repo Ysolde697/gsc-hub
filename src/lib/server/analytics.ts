@@ -65,13 +65,23 @@ export function rowToPage(r: SearchAnalyticsRow): PageRow {
 // ─── Striking distance ────────────────────────────────────────────────────────
 export type StrikingRow = QueryPageRow;
 
-export function computeStriking(rows: QueryPageRow[], limit = 100): StrikingRow[] {
+export interface StrikingRange {
+  posMin?: number;
+  /** 0 — без верхней границы. */
+  posMax?: number;
+  minImpressions?: number;
+}
+
+export function computeStriking(rows: QueryPageRow[], limit = 100, range: StrikingRange = {}): StrikingRow[] {
+  const posMin = range.posMin ?? STRIKING_POS_MIN;
+  const posMax = range.posMax ?? STRIKING_POS_MAX;
+  const minImpr = range.minImpressions ?? STRIKING_MIN_IMPRESSIONS;
   return rows
     .filter(
       (r) =>
-        r.position >= STRIKING_POS_MIN &&
-        r.position <= STRIKING_POS_MAX &&
-        r.impressions >= STRIKING_MIN_IMPRESSIONS
+        r.position >= posMin &&
+        (posMax === 0 || r.position <= posMax) &&
+        r.impressions >= minImpr
     )
     .sort((a, b) => b.impressions - a.impressions)
     .slice(0, limit);

@@ -183,6 +183,40 @@
   });
   const selectedVisible = $derived(strikingRows.filter((r: { page: string; query: string }) => selectedPairs.has(pairKey(r.page, r.query))).length);
 
+  // Диапазон Striking: позиции 4–20 / 4–50 / все и показов от 10 / 1.
+  // Запоминается в браузере для каждого сайта.
+  const RANGE_KEY = 'gsc-hub:striking-range:';
+  function readRange(): { posMax: number; minImpr: number } {
+    try {
+      const v = JSON.parse(localStorage.getItem(RANGE_KEY + data.siteUrl) ?? 'null');
+      if (v && [20, 50, 0].includes(v.posMax) && [10, 1].includes(v.minImpr)) return v;
+    } catch {
+      /* без памяти — обычный диапазон */
+    }
+    // По умолчанию — все ключи: все позиции и от 1 показа.
+    return { posMax: 0, minImpr: 1 };
+  }
+  let strikingPosMax = $state(0);
+  let strikingMinImpr = $state(1);
+  if (typeof localStorage !== 'undefined') {
+    const r0 = untrack(() => readRange());
+    strikingPosMax = r0.posMax;
+    strikingMinImpr = r0.minImpr;
+  }
+  async function setStrikingRange(posMax: number, minImpr: number) {
+    if (analyticsLoading) return;
+    strikingPosMax = posMax;
+    strikingMinImpr = minImpr;
+    try {
+      localStorage.setItem(RANGE_KEY + data.siteUrl, JSON.stringify({ posMax, minImpr }));
+    } catch {
+      /* ignore */
+    }
+    selectedPairs = new Set();
+    analytics = null;
+    await loadAnalytics();
+  }
+
   async function filterUrls() {
     if (analyticsLoading) return;
     appliedMask = urlMask.trim();
@@ -382,7 +416,7 @@
     analyticsLoading = true;
     analyticsErr = null;
     try {
-      const r = await fetch(`${base}/analytics?${accQ}&days=${data.days}&urlMask=${encodeURIComponent(appliedMask)}&urlMode=${appliedMode}`);
+      const r = await fetch(`${base}/analytics?${accQ}&days=${data.days}&urlMask=${encodeURIComponent(appliedMask)}&urlMode=${appliedMode}&posMax=${strikingPosMax}&minImpr=${strikingMinImpr}`);
       if (!r.ok) throw new Error(`${r.status}: ${await r.text()}`);
       analytics = await r.json();
       brandInput = (analytics.brandedTerms ?? []).join(', ');
@@ -777,6 +811,21 @@
                     <button class="btn btn-ghost" type="button" onclick={() => { urlMask = ''; filterUrls(); }} disabled={analyticsLoading}>Сбросить</button>
                     <span class="text-xs text-ink-3">Показано {strikingRows.length}</span>
                   </form>
+                  <div class="flex flex-wrap items-center gap-2 text-xs">
+                    <span class="text-ink-3">Позиции:</span>
+                    <div class="app-segmented" role="group" aria-label="Диапазон позиций">
+                      {#each [[20, '4–20'], [50, '4–50'], [0, 'все']] as [v, label] (v)}
+                        <button type="button" class:is-active={strikingPosMax === v} disabled={analyticsLoading} onclick={() => setStrikingRange(v as number, strikingMinImpr)}>{label}</button>
+                      {/each}
+                    </div>
+                    <span class="ml-2 text-ink-3">Показов от:</span>
+                    <div class="app-segmented" role="group" aria-label="Минимум показов">
+                      {#each [10, 1] as v (v)}
+                        <button type="button" class:is-active={strikingMinImpr === v} disabled={analyticsLoading} onclick={() => setStrikingRange(strikingPosMax, v)}>{v}</button>
+                      {/each}
+                    </div>
+                    <span class="text-ink-3">· классический Striking — 4–20 и от 10 показов</span>
+                  </div>
                   {#if viewSaveError}<p class="text-err text-xs" role="alert">{viewSaveError}</p>{/if}
                   <details>
                     <summary class="cursor-pointer text-xs font-medium">Исключения домена ({exclusions.length})</summary>
@@ -795,7 +844,7 @@
                   <SiteLinkHistory />
                 </div>
                 {#if strikingRows.length === 0}
-                  <p class="loading p-3">Нет запросов с учётом фильтра и исключений.</p>
+                  <p class="loading p-3">Нет запросов с учётом фильтра и исключений.{#if strikingPosMax !== 0 || strikingMinImpr !== 1} Попробуйте «Позиции: все» и «Показов от: 1».{/if}</p>
                 {:else}
                   <div class="overflow-x-auto">
                     <table class="app-table">

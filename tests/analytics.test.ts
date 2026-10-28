@@ -197,3 +197,19 @@ describe('splitBranded term matching', () => {
     }
   );
 });
+
+import { computeStriking as cs } from '../src/lib/server/analytics';
+
+describe('computeStriking: диапазон с переключателей', () => {
+  const r = (q: string, position: number, impressions: number) => ({ query: q, page: 'https://a.co/', clicks: 0, impressions, ctr: 0, position });
+  const rows = [r('top', 2, 50), r('mid', 10, 5), r('mid2', 15, 30), r('low', 33, 165), r('deep', 70, 40)];
+  it('по умолчанию 4–20 и от 10 показов', () => {
+    expect(cs(rows).map((x) => x.query)).toEqual(['mid2']);
+  });
+  it('4–50 и от 1 показа', () => {
+    expect(cs(rows, 100, { posMin: 4, posMax: 50, minImpressions: 1 }).map((x) => x.query)).toEqual(['low', 'mid2', 'mid']);
+  });
+  it('все позиции', () => {
+    expect(cs(rows, 100, { posMin: 1, posMax: 0, minImpressions: 1 })).toHaveLength(5);
+  });
+});
