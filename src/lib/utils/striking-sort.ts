@@ -1,4 +1,6 @@
-export const STRIKING_SORT_KEYS = ['query', 'page', 'position', 'serp', 'impressions', 'clicks', 'ctr', 'bought'] as const;
+export const STRIKING_SORT_KEYS = ['query', 'page', 'position', 'serp', 'impressions', 'clicks', 'ctr', 'bought', 'intent', 'others', 'last', 'group'] as const;
+/** Колонки, значения которых считает страница (тип ключа, другие сайты, закупки). */
+export type StrikingExtraKey = 'intent' | 'others' | 'last' | 'group';
 export type StrikingSortKey = typeof STRIKING_SORT_KEYS[number];
 export type SortDirection = 'asc' | 'desc';
 
@@ -8,10 +10,13 @@ interface Row {
 
 export function sortStriking<T extends Row>(
   rows: T[], key: StrikingSortKey, dir: SortDirection,
-  serp: (query: string) => number | null, bought: (page: string, query: string) => number
+  serp: (query: string) => number | null, bought: (page: string, query: string) => number,
+  extra?: (key: StrikingExtraKey, row: T) => number | null
 ): T[] {
   const value = (r: T): string | number | null => key === 'serp' ? serp(r.query)
-    : key === 'bought' ? bought(r.page, r.query) : r[key];
+    : key === 'bought' ? bought(r.page, r.query)
+    : key === 'intent' || key === 'others' || key === 'last' || key === 'group' ? (extra ? extra(key, r) : null)
+    : r[key];
   const absent = (v: string | number | null) => v === null || (typeof v === 'number' && !Number.isFinite(v));
   return [...rows].sort((a, b) => {
     const x = value(a), y = value(b);

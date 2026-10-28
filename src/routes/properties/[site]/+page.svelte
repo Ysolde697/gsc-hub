@@ -14,7 +14,8 @@
   import LastPlanCell from '$lib/components/LastPlanCell.svelte';
   import OtherSitesCell from '$lib/components/OtherSitesCell.svelte';
   import SiteLinkHistory from '$lib/components/SiteLinkHistory.svelte';
-  import { loadGroupItems, loadCompetition, comp } from '$lib/group-items.svelte';
+  import { loadGroupItems, loadCompetition, comp, gi, activeGroup, otherGroups, itemKey } from '$lib/group-items.svelte';
+  import { classifyIntent } from '$lib/utils/intent';
   import { sortStriking, type StrikingSortKey, type SortDirection } from '$lib/utils/striking-sort';
   import { siteHostname, urlExcluded, urlMatchesMask, type UrlExclusion } from '$lib/utils/url-filters';
 
@@ -55,7 +56,7 @@
     if (strikingSort === key) strikingDir = strikingDir === 'asc' ? 'desc' : 'asc';
     else {
       strikingSort = key;
-      strikingDir = ['query', 'page', 'position', 'serp'].includes(key) ? 'asc' : 'desc';
+      strikingDir = ['query', 'page', 'position', 'serp', 'intent'].includes(key) ? 'asc' : 'desc';
     }
     saveView({ sort: strikingSort, dir: strikingDir });
   }
@@ -151,12 +152,34 @@
   ));
   const strikingRows = $derived(sortStriking(filteredStrikingRows, strikingSort, strikingDir,
     (query) => serpAsked.has(query) ? serpPositions.get(query) ?? null : null,
-    (page, query) => boughtFor(page, query)?.quantity ?? 0
+    (page, query) => boughtFor(page, query)?.quantity ?? 0,
+    (key, r: { query: string; page: string; position: number }) => {
+      if (key === 'intent') {
+        const t = classifyIntent(r.query, r.page, data.brandedTerms ?? []);
+        return t === 'conv' ? 1 : t === 'brand' ? 2 : null;
+      }
+      if (key === 'others') {
+        // Сначала ключи, где другой ваш сайт выше, затем по числу других сайтов.
+        const e = comp.byQuery[r.query];
+        if (!e) return null;
+        const hosts = new Set([...e.owners.map((o) => o.host), ...e.links.map((l) => l.host)]).size;
+        const better = e.owners.some((o) => o.position < r.position) ? 1000 : 0;
+        return hosts ? better + hosts : null;
+      }
+      if (key === 'last') {
+        const l = otherGroups(r.page, r.query);
+        return l.length ? l[l.length - 1].at : null;
+      }
+      // group: сколько ссылок в выбранной группе
+      const g = activeGroup();
+      return g ? (gi.marks[itemKey(r.page, r.query)]?.find((m) => m.groupId === g.id)?.qty ?? null) : null;
+    }
   ));
   // «Мои другие сайты»: подгрузить по ключам, которые сейчас в таблице.
   $effect(() => {
     if (tab !== 'keywords' || strikingRows.length === 0) return;
-    loadCompetition(data.siteUrl, [...new Set(strikingRows.map((r: { query: string }) => r.query))]);
+    // Отсортированный список: смена сортировки таблицы не должна перезапрашивать данные.
+    loadCompetition(data.siteUrl, [...new Set(strikingRows.map((r: { query: string }) => r.query))].sort());
   });
   const selectedVisible = $derived(strikingRows.filter((r: { page: string; query: string }) => selectedPairs.has(pairKey(r.page, r.query))).length);
 
@@ -779,7 +802,7 @@
                       <thead>
                         <tr><th class="w-8"></th>
                           <th class="sort-th" aria-sort={sortAria('query')}><button type="button" class="hover:text-ink" onclick={() => sortBy('query')}>Query<SortCaret dir={sortArrow('query')} /></button></th>
-                          <th title="Зелёный — конверсионный ключ, жёлтый — брендовый/коммерческий">Тип</th>
+                          <th class="sort-th" aria-sort={sortAria('intent')} title="Зелёный — конверсионный ключ, жёлтый — брендовый/коммерческий"><button type="button" class="hover:text-ink" onclick={() => sortBy('intent')}>Тип<SortCaret dir={sortArrow('intent')} /></button></th>
                           <th class="sort-th" aria-sort={sortAria('page')}><button type="button" class="hover:text-ink" onclick={() => sortBy('page')}>Page<SortCaret dir={sortArrow('page')} /></button></th>
                           <th class="sort-th num" aria-sort={sortAria('position')}><button type="button" class="hover:text-ink" onclick={() => sortBy('position')}>Pos<SortCaret dir={sortArrow('position')} /></button></th>
                           <th class="sort-th num" aria-sort={sortAria('serp')}><button type="button" class="hover:text-ink" onclick={() => sortBy('serp')}>SERP<SortCaret dir={sortArrow('serp')} /></button></th>
@@ -787,9 +810,9 @@
                           <th class="sort-th num" aria-sort={sortAria('clicks')}><button type="button" class="hover:text-ink" onclick={() => sortBy('clicks')}>Clicks<SortCaret dir={sortArrow('clicks')} /></button></th>
                           <th class="sort-th num" aria-sort={sortAria('ctr')}><button type="button" class="hover:text-ink" onclick={() => sortBy('ctr')}>CTR<SortCaret dir={sortArrow('ctr')} /></button></th>
                           <th class="sort-th num" aria-sort={sortAria('bought')}><button type="button" class="hover:text-ink" onclick={() => sortBy('bought')}>Куплено<SortCaret dir={sortArrow('bought')} /></button></th>
-                          <th title="Другие ваши сайты с показами по этому ключу и ссылки на них. Красным — другой сайт стоит выше">Мои другие сайты</th>
-                          <th title="Когда на этот ключ в последний раз брали ссылки: группа, сколько, как давно">Последняя закупка</th>
-                      <th class="num" title="Клик — добавить связку «ключ + страница» в выбранную группу">В группу</th>
+                          <th class="sort-th" aria-sort={sortAria('others')} title="Другие ваши сайты с показами по этому ключу и ссылки на них. Красным — другой сайт стоит выше"><button type="button" class="hover:text-ink" onclick={() => sortBy('others')}>Мои другие сайты<SortCaret dir={sortArrow('others')} /></button></th>
+                          <th class="sort-th" aria-sort={sortAria('last')} title="Когда на этот ключ в последний раз брали ссылки: группа, сколько, как давно"><button type="button" class="hover:text-ink" onclick={() => sortBy('last')}>Последняя закупка<SortCaret dir={sortArrow('last')} /></button></th>
+                      <th class="sort-th num" aria-sort={sortAria('group')} title="Клик — добавить связку «ключ + страница» в выбранную группу"><button type="button" class="hover:text-ink" onclick={() => sortBy('group')}>В группу<SortCaret dir={sortArrow('group')} /></button></th>
                           <th class="num w-20"></th></tr>
                       </thead>
                       <tbody>

@@ -7,6 +7,8 @@
   import GroupCell from '$lib/components/GroupCell.svelte';
   import { loadGroupItems } from '$lib/group-items.svelte';
   import { alpha3ToAlpha2 } from '$lib/utils/country';
+  import SortTh from '$lib/components/SortTh.svelte';
+  import { TableSort } from '$lib/table-sort.svelte';
 
   type Row = {
     query: string; page: string; country: string; siteUrl: string; host: string; accountId: string;
@@ -38,7 +40,9 @@
   } | null>(null);
   let loading = $state(false);
   let err = $state<string | null>(null);
-  let sort = $state<'impressions' | 'position' | 'clicks' | 'host' | 'sites'>('impressions');
+  type K = 'query' | 'intent' | 'host' | 'page' | 'country' | 'position' | 'impressions' | 'clicks' | 'ctr' | 'sites' | 'links';
+  const sort = new TableSort<K>('impressions', -1, ['impressions', 'clicks', 'ctr', 'sites', 'links']);
+  const INTENT_ORDER = { conv: 1, brand: 2 } as const;
 
   onMount(() => {
     loadGroupItems();
@@ -124,15 +128,15 @@
     run();
   }
 
-  const sorted = $derived.by(() => {
-    const r = [...rows];
-    if (sort === 'position') r.sort((a, b) => a.position - b.position);
-    else if (sort === 'impressions') r.sort((a, b) => b.impressions - a.impressions);
-    else if (sort === 'clicks') r.sort((a, b) => b.clicks - a.clicks);
-    else if (sort === 'sites') r.sort((a, b) => b.sitesForQuery - a.sitesForQuery || b.impressions - a.impressions);
-    else r.sort((a, b) => a.host.localeCompare(b.host) || a.position - b.position);
-    return r;
-  });
+  const sorted = $derived(
+    sort.apply(rows, (r, k) =>
+      k === 'intent' ? (r.intent ? INTENT_ORDER[r.intent] : null)
+      : k === 'sites' ? r.sitesForQuery
+      : k === 'links' ? r.links || null
+      : k === 'country' ? countryName(r.country)
+      : (r[k] as string | number)
+    )
+  );
   const siteCount = $derived(new Set(rows.map((r) => r.host)).size);
   const showCountry = $derived(byCountry || !!country);
   const fmt = (n: number) => n.toLocaleString('ru-RU');
@@ -145,7 +149,7 @@
       return /[";\n\r]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
     };
     const head = ['Ключ', 'Тип', 'Сайт', 'Страница', 'Страна', 'Позиция', 'Показы', 'Клики', 'CTR %', 'Сайтов по ключу', 'Ссылок в группах'];
-    const lines = sorted.map((r) =>
+    const lines = sorted.map((r: Row) =>
       [r.query, r.intent === 'conv' ? 'конверсия' : r.intent === 'brand' ? 'бренд/комм.' : '', r.host, r.page,
         r.country ? countryName(r.country) : '', r.position.toFixed(1).replace('.', ','), r.impressions, r.clicks,
         (r.ctr * 100).toFixed(1).replace('.', ','), r.sitesForQuery, r.links || ''].map(cell).join(';')
@@ -240,10 +244,7 @@
         {#if info.noAccess}<span class="text-xs font-normal normal-case text-ink-3" title="Сайт есть в консоли, но доступ не подтверждён — Google не отдаёт по нему данных">{info.noAccess} сайтов без доступа</span>{/if}
         {#if info.errors}<span class="text-xs font-normal normal-case text-warn" title={info.errorList.map((e) => `${e.site}: ${e.reason}`).join('\n')}>{info.errors} сайтов не ответили</span>{/if}
         <span class="ml-auto flex flex-wrap items-center gap-1 text-xs font-normal normal-case">
-          Сортировка:
-          {#each [['impressions', 'показы'], ['position', 'позиция'], ['clicks', 'клики'], ['sites', 'сайтов'], ['host', 'сайт']] as [k, label] (k)}
-            <button type="button" class="btn btn-sm {sort === k ? 'bg-acc-t text-acc' : 'btn-ghost'}" onclick={() => (sort = k as typeof sort)}>{label}</button>
-          {/each}
+          <span class="text-ink-3">Сортировка — клик по заголовку колонки.</span>
           <button type="button" class="btn btn-sec btn-sm ml-2" onclick={downloadCsv} disabled={!rows.length}>Скачать CSV</button>
         </span>
       </div>
@@ -254,9 +255,18 @@
           <table class="app-table">
             <thead>
               <tr>
-                <th>Ключ</th><th>Тип</th><th>Сайт</th><th>Страница</th>{#if showCountry}<th>Страна</th>{/if}
-                <th class="num">Поз.</th><th class="num">Показы</th><th class="num">Клики</th><th class="num">CTR</th>
-                <th class="num" title="На скольких ваших сайтах есть этот ключ">Сайтов</th><th>Ссылки в группах</th><th class="num">В группу</th><th></th>
+                <SortTh {sort} k="query" label="Ключ" />
+                <SortTh {sort} k="intent" label="Тип" />
+                <SortTh {sort} k="host" label="Сайт" />
+                <SortTh {sort} k="page" label="Страница" />
+                {#if showCountry}<SortTh {sort} k="country" label="Страна" />{/if}
+                <SortTh {sort} k="position" label="Поз." num />
+                <SortTh {sort} k="impressions" label="Показы" num />
+                <SortTh {sort} k="clicks" label="Клики" num />
+                <SortTh {sort} k="ctr" label="CTR" num />
+                <SortTh {sort} k="sites" label="Сайтов" num title="На скольких ваших сайтах есть этот ключ" />
+                <SortTh {sort} k="links" label="Ссылки в группах" />
+                <th class="num">В группу</th><th></th>
               </tr>
             </thead>
             <tbody>

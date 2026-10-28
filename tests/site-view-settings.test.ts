@@ -36,12 +36,14 @@ const rows = [
   { query: 'a', page: '/a', position: 8, impressions: 100, clicks: 30, ctr: .3 }
 ];
 it('sorts every table column in both directions without mutating input', () => {
-  const expected: Record<string, string> = { query: 'a', page: 'a', position: 'b', serp: 'a', impressions: 'a', clicks: 'b', ctr: 'b', bought: 'a' };
+  const expected: Record<string, string> = { query: 'a', page: 'a', position: 'b', serp: 'a', impressions: 'a', clicks: 'b', ctr: 'b', bought: 'a', intent: 'a', others: 'a', last: 'a', group: 'a' };
   const positions = (q: string) => q === 'a' ? 4 : 12;
   const bought = (_: string, q: string) => q === 'a' ? 0 : 15;
+  // Колонки, которые считает страница: у 'a' значения меньше.
+  const extra = (_k: string, r: { query: string }) => (r.query === 'a' ? 1 : 5);
   for (const key of STRIKING_SORT_KEYS) {
-    expect(sortStriking(rows, key, 'asc', positions, bought)[0].query).toBe(expected[key]);
-    expect(sortStriking(rows, key, 'desc', positions, bought)[0].query).not.toBe(expected[key]);
+    expect(sortStriking(rows, key, 'asc', positions, bought, extra)[0].query).toBe(expected[key]);
+    expect(sortStriking(rows, key, 'desc', positions, bought, extra)[0].query).not.toBe(expected[key]);
   }
   expect(rows[0].query).toBe('b');
 });

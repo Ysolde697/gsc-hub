@@ -2,6 +2,8 @@
   import { enhance } from '$app/forms';
   import { siteHostname } from '$lib/utils/url-filters';
   import OtherSitesInline from '$lib/components/OtherSitesInline.svelte';
+  import SortTh from '$lib/components/SortTh.svelte';
+  import { TableSort } from '$lib/table-sort.svelte';
   import type { OtherOwner, OtherLink } from '$lib/group-items.svelte';
   import { goto, invalidateAll } from '$app/navigation';
   import type { PageData, ActionData } from './$types';
@@ -66,6 +68,20 @@
     return k ? `/groups/open?g=${group?.id}&site=${encodeURIComponent(k.open.siteUrl)}&acc=${encodeURIComponent(k.open.accountId)}` : null;
   };
   let editorOpen = $state(false);
+
+  // Сортировка таблицы «Сайты группы».
+  type HostKey = 'done' | 'host' | 'console' | 'links';
+  const hostSort = new TableSort<HostKey>(null, 1, ['links']);
+  const sortedHosts = $derived(
+    group
+      ? hostSort.apply(group.hosts, (h, k) =>
+          k === 'done' ? (group.done.includes(h) ? 1 : 0)
+          : k === 'host' ? h
+          : k === 'console' ? (knownByHost.get(h)?.accounts.join(', ') ?? '')
+          : (itemsByHost.get(h) ?? 0)
+        )
+      : []
+  );
 
   // Убрать ключ у другого сайта прямо из колонки «Другие сайты».
   async function removeOther(l: OtherLink) {
@@ -269,9 +285,9 @@
           <div class="border-b border-line">
             <div class="px-3 pt-3 text-xs font-semibold uppercase tracking-wide text-ink-3">Сайты группы</div>
             <table class="app-table">
-              <thead><tr><th class="w-px">Пройден</th><th>Сайт</th><th>Консоль</th><th class="num">Ссылок</th><th>Безанкорные</th><th></th></tr></thead>
+              <thead><tr><SortTh sort={hostSort} k="done" label="Пройден" /><SortTh sort={hostSort} k="host" label="Сайт" /><SortTh sort={hostSort} k="console" label="Консоль" /><SortTh sort={hostSort} k="links" label="Ссылок" num /><th>Безанкорные</th><th></th></tr></thead>
               <tbody>
-                {#each group.hosts as h (h)}
+                {#each sortedHosts as h (h)}
                   {@const isDone = group.done.includes(h)}
                   <tr class={isDone ? 'opacity-60' : ''}>
                     <td class="text-center">

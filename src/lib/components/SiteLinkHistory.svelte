@@ -1,6 +1,15 @@
 <script lang="ts">
   // История ссылок по сайту: всё, что отбиралось в группы (анкорные и безанкорные).
-  import { gi } from '$lib/group-items.svelte';
+  import { gi, type HistoryRow } from '$lib/group-items.svelte';
+  import SortTh from './SortTh.svelte';
+  import { TableSort } from '$lib/table-sort.svelte';
+  type K = 'group' | 'kind' | 'query' | 'page' | 'qty' | 'position';
+  const sort = new TableSort<K>(null, 1, ['qty']);
+  const rows = $derived(
+    sort.apply(gi.history, (h: HistoryRow, k) =>
+      k === 'group' ? h.addedAt : k === 'kind' ? h.kind : k === 'query' ? (h.kind === 'naked' ? null : h.query) : h[k]
+    )
+  );
   const total = $derived(gi.history.reduce((a, h) => a + h.qty, 0));
   let open = $state(false);
 </script>
@@ -14,9 +23,9 @@
   {:else}
     <div class="max-h-80 overflow-auto">
       <table class="app-table">
-        <thead><tr><th>Группа</th><th>Тип</th><th>Анкор</th><th>Страница</th><th class="num">Ссылок</th><th class="num">Pos</th></tr></thead>
+        <thead><tr><SortTh {sort} k="group" label="Группа" /><SortTh {sort} k="kind" label="Тип" /><SortTh {sort} k="query" label="Анкор" /><SortTh {sort} k="page" label="Страница" /><SortTh {sort} k="qty" label="Ссылок" num /><SortTh {sort} k="position" label="Pos" num /></tr></thead>
         <tbody>
-          {#each gi.history as h (h.id)}
+          {#each rows as h (h.id)}
             <tr>
               <td class="whitespace-nowrap"><a class="text-acc hover:underline" href="/groups?g={h.groupId}">{h.groupName}</a>{#if h.fixedAt}<span class="ml-1 text-[10px] text-ink-3">зафикс.</span>{/if}</td>
               <td class="text-xs text-ink-3">{h.kind === 'naked' ? 'Безанкор' : 'Анкор'}</td>

@@ -8,7 +8,8 @@
   import GroupCell from '$lib/components/GroupCell.svelte';
   import IntentBadge from '$lib/components/IntentBadge.svelte';
   import LastPlanCell from '$lib/components/LastPlanCell.svelte';
-  import { loadGroupItems } from '$lib/group-items.svelte';
+  import { loadGroupItems, gi, activeGroup, otherGroups, itemKey } from '$lib/group-items.svelte';
+  import { classifyIntent } from '$lib/utils/intent';
   import { onMount } from 'svelte';
   onMount(() => { loadGroupItems(); });
 
@@ -65,12 +66,12 @@
   let tab = $state<Tab>(data.initialTab as Tab);
 
   // ── Striking: client-side sort ──
-  type SortKey = 'site' | 'page' | 'query' | 'country' | 'position' | 'impressions' | 'clicks' | 'ctr';
+  type SortKey = 'site' | 'page' | 'query' | 'country' | 'position' | 'impressions' | 'clicks' | 'ctr' | 'intent' | 'bought' | 'last' | 'group';
   let sortKey = $state<SortKey>('impressions');
   let sortDir = $state<'asc' | 'desc'>('desc');
   function toggleSort(k: SortKey) {
     if (sortKey === k) sortDir = sortDir === 'desc' ? 'asc' : 'desc';
-    else { sortKey = k; sortDir = k === 'position' ? 'asc' : 'desc'; }
+    else { sortKey = k; sortDir = k === 'position' || k === 'intent' ? 'asc' : 'desc'; }
   }
   const ind = (k: SortKey): 'asc' | 'desc' | '' => (sortKey === k ? sortDir : '');
   type StrikingRow = NonNullable<typeof pf>['striking'][number];
@@ -82,11 +83,26 @@
         case 'page': return r.page;
         case 'query': return r.query;
         case 'country': return r.country;
+        case 'intent': {
+          const t = classifyIntent(r.query, r.page);
+          return t === 'conv' ? 1 : t === 'brand' ? 2 : null;
+        }
+        case 'bought': return boughtFor(r)?.quantity ?? null;
+        case 'last': {
+          const l = otherGroups(r.page, r.query);
+          return l.length ? l[l.length - 1].at : null;
+        }
+        case 'group': {
+          const g = activeGroup();
+          return g ? (gi.marks[itemKey(r.page, r.query)]?.find((m) => m.groupId === g.id)?.qty ?? null) : null;
+        }
         default: return r[sortKey as 'position' | 'impressions' | 'clicks' | 'ctr'];
       }
     };
     return [...(pf?.striking ?? [])].sort((a, b) => {
       const av = val(a), bv = val(b);
+      // Пустые значения — всегда внизу.
+      if (av === null || bv === null) return av === bv ? 0 : av === null ? 1 : -1;
       if (typeof av === 'string' && typeof bv === 'string') return dir * av.localeCompare(bv);
       return dir * ((av as number) - (bv as number));
     });
@@ -474,15 +490,15 @@
                   {@render sortTh('site', 'Site')}
                   {@render sortTh('page', 'Page')}
                   {@render sortTh('query', 'Query')}
-                  <th title="Зелёный — конверсионный ключ, жёлтый — брендовый/коммерческий">Тип</th>
+                  {@render sortTh('intent', 'Тип')}
                   {@render sortTh('country', 'Geo')}
                   {@render sortTh('position', 'Pos', true)}
                   {@render sortTh('impressions', 'Impr', true)}
                   {@render sortTh('clicks', 'Clicks', true)}
                   {@render sortTh('ctr', 'CTR', true)}
-                  <th class="num" title="Куплено ссылок MagicLinks на связку «страница + запрос»">Куплено</th>
-                  <th title="Когда на этот ключ в последний раз брали ссылки: группа, сколько, как давно">Последняя закупка</th>
-                      <th class="num" title="Клик — добавить связку «ключ + страница» в выбранную группу">В группу</th>
+                  {@render sortTh('bought', 'Куплено', true)}
+                  {@render sortTh('last', 'Последняя закупка')}
+                      {@render sortTh('group', 'В группу', true)}
                   <th class="num w-20"></th>
                 </tr>
               </thead>
