@@ -25,8 +25,80 @@ export const gi = $state({
   marks: {} as Record<string, { groupId: number; name: string }[]>,
   today: '',
   busy: new Set<string>(),
-  error: null as string | null
+  error: null as string | null,
+  /** Страница Sites: в какую группу добавлять сайты кнопкой +. */
+  targetId: null as number | null
 });
+
+const TARGET_KEY = 'gsc-hub:target-group';
+
+/** Группа для страницы Sites: запомненная, иначе сегодняшняя, иначе самая новая. */
+function pickTarget() {
+  let saved: number | null = null;
+  try {
+    saved = Number(localStorage.getItem(TARGET_KEY)) || null;
+  } catch {
+    /* без памяти выбора тоже работает */
+  }
+  const ok = (id: number | null) => gi.groups.some((g) => g.id === id);
+  if (ok(gi.targetId)) return;
+  gi.targetId = ok(saved) ? saved : (gi.groups.find((g) => g.name === gi.today)?.id ?? gi.groups[0]?.id ?? null);
+}
+
+export function chooseTarget(id: number | null) {
+  gi.targetId = id;
+  try {
+    if (id) localStorage.setItem(TARGET_KEY, String(id));
+  } catch {
+    /* ignore */
+  }
+}
+
+export const targetGroup = () => gi.groups.find((g) => g.id === gi.targetId) ?? null;
+
+function hostOf(siteUrl: string): string {
+  try {
+    const raw = siteUrl.startsWith('sc-domain:') ? `https://${siteUrl.slice(10)}/` : siteUrl;
+    return new URL(raw).hostname.toLowerCase().replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+}
+
+export const siteInTarget = (siteUrl: string) => !!targetGroup()?.hosts.includes(hostOf(siteUrl));
+
+export async function toggleSiteInTarget(siteUrl: string) {
+  const g = targetGroup();
+  if (!g) {
+    gi.error = 'Сначала создайте группу над таблицей';
+    return;
+  }
+  const k = 'site:' + siteUrl;
+  if (gi.busy.has(k)) return;
+  gi.busy = new Set(gi.busy).add(k);
+  try {
+    const data = await post('/groups/items', { action: 'host', groupId: g.id, site: siteUrl, on: !siteInTarget(siteUrl) });
+    gi.groups = data.groups;
+    gi.error = null;
+  } catch (e) {
+    gi.error = (e as Error).message;
+  } finally {
+    const next = new Set(gi.busy);
+    next.delete(k);
+    gi.busy = next;
+  }
+}
+
+export async function createTarget(name?: string) {
+  try {
+    const data = await post('/groups/items', { action: 'create', name });
+    gi.groups = data.groups;
+    chooseTarget(data.id);
+    gi.error = null;
+  } catch (e) {
+    gi.error = (e as Error).message;
+  }
+}
 
 export const itemKey = (page: string, query: string) => `${page}\n${query}`;
 export const activeGroup = () => gi.groups.find((g) => g.active) ?? null;
@@ -47,6 +119,7 @@ export async function loadGroupItems(site?: string) {
     gi.marks = data.marks;
     gi.today = data.today;
     gi.error = null;
+    pickTarget();
   } catch (e) {
     gi.error = `Группы не загрузились: ${(e as Error).message}`;
   }

@@ -7,9 +7,13 @@
   import googleIcon from '$lib/assets/google.svg';
   import bingIcon from '$lib/assets/bing.svg';
   import TrendChart from '$lib/components/TrendChart.svelte';
+  import SiteGroupBar from '$lib/components/SiteGroupBar.svelte';
+  import SiteGroupCell from '$lib/components/SiteGroupCell.svelte';
+  import { loadGroupItems } from '$lib/group-items.svelte';
   import { googleSerpUrl } from '$lib/utils/country';
   import { SERIES, AXIS } from '$lib/chart-theme';
   import type { PageData } from './$types';
+  onMount(() => { loadGroupItems(); });
   let { data }: { data: PageData } = $props();
 
   // Submit-all log pages open on this same origin by default. PUBLIC_AI_BASE
@@ -1187,6 +1191,7 @@
           </div>
         </div>
       {:else}
+        <SiteGroupBar />
         <div class="overflow-x-auto">
           <table class="app-table">
             <thead>
@@ -1196,6 +1201,7 @@
                   <span class="text-ink-4" aria-hidden="true"> · </span>
                   <a class="sort-th" href={sortHref('account', data.sort, data.dir, data.days)}>Account<SortCaret dir={sortIndicator('account', data.sort, data.dir)} /></a>
                 </th>
+                <th class="print:hidden" title="Добавить сайт в группу, выбранную над таблицей">В группу</th>
                 <th class="print:hidden"><span class="sr-only">Trend</span></th>
                 <th class="num">
                   <a class="sort-th" href={sortHref('clicks', data.sort, data.dir, data.days)}>Clicks<SortCaret dir={sortIndicator('clicks', data.sort, data.dir)} /></a>
@@ -1273,6 +1279,7 @@
                       {s.accountLabel ?? s.accountEmail}{#if s.accountLabel}<span class="text-ink-4"> ({s.accountEmail})</span>{/if}
                     </div>
                   </td>
+                  <td class="print:hidden"><SiteGroupCell siteUrl={s.siteUrl} /></td>
                   {#if s.summary !== null}
                     <td class="w-16 print:hidden">
                       {#if s.summary.series?.length}
@@ -1364,7 +1371,7 @@
                 </tr>
                 {#if expanded}
                   <tr class="bg-sunk hover:bg-sunk">
-                    <td class="px-3 py-3" colspan="12">
+                    <td class="px-3 py-3" colspan="13">
                       {#if inspectState.kind === 'loading'}
                         <p class="loading">Inspecting {inspectState.total} top URLs (URL Inspection API, ~3-5s)…</p>
                       {:else if inspectState.kind === 'error'}

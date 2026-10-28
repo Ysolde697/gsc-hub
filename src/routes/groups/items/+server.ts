@@ -37,6 +37,8 @@ export const GET: RequestHandler = async ({ url, locals }) => {
  *   { action: 'remove', groupId, page, query }        — убрать ключ
  *   { action: 'done',   groupId, host, done }         — сайт пройден / не пройден
  *   { action: 'today',  site }                        — новая группа на сегодня с этим сайтом, выбрать её
+ *   { action: 'host',   groupId, site, on }           — добавить сайт в группу / убрать (страница Sites)
+ *   { action: 'create', name? }                       — новая группа (по умолчанию сегодняшняя дата)
  */
 export const POST: RequestHandler = async ({ request, locals }) => {
   requireAdmin(locals);
@@ -54,11 +56,23 @@ export const POST: RequestHandler = async ({ request, locals }) => {
       gscCacheInvalidate('portfolio:');
       return json({ ok: true, id, groups: summaries() });
     }
+    if (body.action === 'create') {
+      const name = typeof body.name === 'string' && body.name.trim() ? body.name : todayGroupName();
+      const id = createSiteGroup(db(), name);
+      return json({ ok: true, id, groups: summaries() });
+    }
     const groupId = Number(body.groupId);
     if (!Number.isInteger(groupId) || groupId < 1) throw new Error('Не выбрана группа');
     if (body.action === 'add') addGroupItem(db(), groupId, (body.item ?? {}) as NewItem);
     else if (body.action === 'remove') removeGroupItem(db(), groupId, String(body.page ?? ''), String(body.query ?? ''));
-    else if (body.action === 'done') setHostDone(db(), groupId, String(body.host ?? ''), body.done === true);
+    else if (body.action === 'host') {
+      const g = getSiteGroup(db(), groupId);
+      const host = normalizeHost(String(body.site ?? ''));
+      if (!g || !host) throw new Error('Нет группы или сайта');
+      const next = body.on === true ? [...g.hosts, host] : g.hosts.filter((h) => h !== host);
+      setSiteGroupHosts(db(), groupId, next);
+      gscCacheInvalidate('portfolio:');
+    } else if (body.action === 'done') setHostDone(db(), groupId, String(body.host ?? ''), body.done === true);
     else throw new Error('неизвестное действие');
     return json({ ok: true, groups: summaries() });
   } catch (e) {
