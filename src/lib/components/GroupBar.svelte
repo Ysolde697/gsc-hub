@@ -17,7 +17,7 @@
   const hasToday = $derived(gi.groups.some((x) => x.name === gi.today));
 </script>
 
-<div class="flex flex-wrap items-center gap-2 rounded border border-line bg-sunk px-2 py-1.5 text-xs">
+<div class="flex flex-wrap items-center gap-2 rounded border px-2 py-1.5 text-xs {g ? 'border-line bg-sunk' : 'border-warn bg-warn-t'}">
   <span class="font-medium text-ink-2">Ключи в группу:</span>
   <select
     class="input h-7 text-xs"
@@ -47,7 +47,10 @@
       <span class="ml-auto text-ink-3">Этого сайта нет в группе «{g.name}» — ключи всё равно можно добавлять.</span>
     {/if}
   {:else}
-    <span class="text-ink-3">Выберите группу, чтобы отбирать ключи кнопкой +.</span>
+    <span class="font-medium text-ink-2">Группа не выбрана — ключи некуда добавлять.</span>
+    {#if gi.groups[0]}
+      <button type="button" class="btn btn-pri btn-sm" onclick={() => switchGroup(gi.groups[0].id)}>Выбрать «{gi.groups[0].name}»</button>
+    {/if}
   {/if}
   {#if gi.error}<span class="text-bad" role="alert">{gi.error}</span>{/if}
 </div>
