@@ -14,6 +14,7 @@ import {
 import { listHiddenSites } from './hidden';
 import { activeGroupHosts, siteInHosts } from './site-groups';
 import { hostOfSite } from './site-events';
+import { mergePageFragments } from './merge-fragments';
 
 const REFRESH_URL = 'https://oauth2.googleapis.com/token';
 const SITES_URL = 'https://searchconsole.googleapis.com/webmasters/v3/sites';
@@ -249,7 +250,8 @@ export async function searchAnalyticsQuery(
       throw new Error(`searchAnalytics ${res.status}: ${(await res.text()).slice(0, 200)}`);
     }
     const json = (await res.json()) as { rows?: SearchAnalyticsRow[] };
-    return json.rows ?? [];
+    // Страницы с якорями (#bonus, #faq) — одна страница: склеиваем.
+    return mergePageFragments(json.rows ?? [], (payload.dimensions ?? []).indexOf('page'));
   });
 }
 
