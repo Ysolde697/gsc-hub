@@ -20,5 +20,5 @@ export const GET: RequestHandler = async ({ url, locals }) => {
     const l = (links.get(foldQuery(h.query)) ?? []).filter((x) => x.host === h.host);
     return { ...h, links: l.reduce((a, x) => a + x.qty, 0), linkGroups: [...new Set(l.map((x) => x.groupName))] };
   });
-  return json({ q, mode, days, rows, total: res.hits.length, sites: res.sites, errors: res.errors, errorList: res.errorList });
+  return json({ q, mode, days, rows, total: res.hits.length, sites: res.sites, errors: res.errors, noAccess: res.noAccess, errorList: res.errorList });
 };

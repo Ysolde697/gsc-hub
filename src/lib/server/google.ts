@@ -1428,7 +1428,10 @@ export async function fetchQueryOwners(db: Db, days = 28): Promise<Map<string, Q
     const perAccount = await Promise.allSettled(accounts.map((a) => listSitesForAccount(db, a)));
     const pairs: { acc: AccountRow; site: SiteRow }[] = [];
     perAccount.forEach((r, i) => {
-      if (r.status === 'fulfilled') r.value.forEach((site) => pairs.push({ acc: accounts[i], site }));
+      if (r.status === 'fulfilled')
+        r.value.forEach((site) => {
+          if (site.permissionLevel !== 'siteUnverifiedUser') pairs.push({ acc: accounts[i], site });
+        });
     });
     const { startDate, endDate } = gscDateRange(days);
     const perSite = await mapSettledLimit(pairs, ({ acc, site }) =>
@@ -1480,12 +1483,18 @@ export async function searchKeywordAcrossSites(
   q: string,
   mode: 'contains' | 'equals' = 'contains',
   days = 28
-): Promise<{ hits: KeywordHit[]; sites: number; errors: number; errorList: { site: string; reason: string }[] }> {
+): Promise<{ hits: KeywordHit[]; sites: number; errors: number; noAccess: number; errorList: { site: string; reason: string }[] }> {
   const accounts = listAccounts(db).filter((a) => a.status === 'active');
   const perAccount = await Promise.allSettled(accounts.map((a) => listSitesForAccount(db, a)));
   const pairs: { acc: AccountRow; site: SiteRow }[] = [];
+  // Неподтверждённые property Google видит, но данных не отдаёт (403) — пропускаем.
+  let noAccess = 0;
   perAccount.forEach((r, i) => {
-    if (r.status === 'fulfilled') r.value.forEach((site) => pairs.push({ acc: accounts[i], site }));
+    if (r.status === 'fulfilled')
+      r.value.forEach((site) => {
+        if (site.permissionLevel === 'siteUnverifiedUser') noAccess++;
+        else pairs.push({ acc: accounts[i], site });
+      });
   });
   const { startDate, endDate } = gscDateRange(days);
   const perSite = await mapSettledLimit(pairs, ({ acc, site }) =>
@@ -1503,6 +1512,10 @@ export async function searchKeywordAcrossSites(
   const errorList: { site: string; reason: string }[] = [];
   perSite.forEach((r, i) => {
     if (r.status !== 'fulfilled') {
+      if (/searchAnalytics 403/.test(String((r.reason as Error)?.message))) {
+        noAccess++;
+        return;
+      }
       errors++;
       errorList.push({ site: pairs[i].site.siteUrl, reason: String((r.reason as Error)?.message ?? r.reason).slice(0, 160) });
       return;
@@ -1528,5 +1541,5 @@ export async function searchKeywordAcrossSites(
     }
   });
   const hits = [...best.values()].sort((a, b) => a.position - b.position || b.impressions - a.impressions);
-  return { hits, sites: pairs.length, errors, errorList };
+  return { hits, sites: pairs.length, errors, noAccess, errorList };
 }

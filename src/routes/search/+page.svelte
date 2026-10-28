@@ -12,7 +12,7 @@
   let mode = $state(page.url.searchParams.get('mode') === 'equals' ? 'equals' : 'contains');
   let days = $state(Number(page.url.searchParams.get('days')) || 28);
   let rows = $state<Row[]>([]);
-  let info = $state<{ total: number; sites: number; errors: number; errorList: { site: string; reason: string }[] } | null>(null);
+  let info = $state<{ total: number; sites: number; errors: number; noAccess: number; errorList: { site: string; reason: string }[] } | null>(null);
   let loading = $state(false);
   let err = $state<string | null>(null);
   let sort = $state<'position' | 'impressions' | 'clicks' | 'host'>('position');
@@ -31,7 +31,7 @@
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.message ?? `HTTP ${res.status}`);
       rows = data.rows;
-      info = { total: data.total, sites: data.sites, errors: data.errors, errorList: data.errorList ?? [] };
+      info = { total: data.total, sites: data.sites, errors: data.errors, noAccess: data.noAccess ?? 0, errorList: data.errorList ?? [] };
     } catch (e) {
       err = (e as Error).message;
       rows = [];
@@ -93,6 +93,7 @@
     <section class="pane">
       <div class="pane-head flex flex-wrap items-center gap-3">
         <span>Найдено: {fmt(info.total)} строк на {siteCount} сайтах</span>
+        {#if info.noAccess}<span class="text-xs font-normal normal-case text-ink-3" title="Сайт есть в консоли, но доступ не подтверждён (неподтверждённый пользователь) — Google не отдаёт по нему данных">{info.noAccess} сайтов без доступа в Search Console</span>{/if}
         {#if info.errors}<span class="text-xs font-normal normal-case text-warn" title={info.errorList.map((e) => `${e.site}: ${e.reason}`).join('\n')}>{info.errors} сайтов не ответили (наведите — причина)</span>{/if}
         <span class="ml-auto flex items-center gap-1 text-xs font-normal normal-case">
           Сортировка:
