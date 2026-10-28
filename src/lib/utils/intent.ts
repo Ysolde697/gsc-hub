@@ -1,12 +1,22 @@
-// Тип ключа для колонки «Тип» в Striking Distance, по словарю, без внешних сервисов.
-//   conv   — зелёный: человек готов действовать (бонус, промокод, регистрация, скачать, играть);
-//   brand  — жёлтый: бренд или коммерческий запрос (casino, apuestas, название казино);
-//   null   — пусто: вход в аккаунт, информационные и прочие.
-// Языки ниши: испанский, португальский, английский, чешский, русский и др.
+// Тип ключа для колонки «Тип», по словарю, без внешних сервисов.
+//
+// ПРАВИЛО (от владельца панели, держать его):
+//   Отбираем ключи, которые ВЕДУТ К КОНВЕРСИИ — к регистрации, депозиту, игре, заработку.
+//   Наличие бренда в ключе само по себе ничего не значит: «coupon de demain 1xbet»
+//   (прогнозы), «vérifier coupon 1xbet» (проверка ставки), «se connecter à mon compte
+//   1xbet» (вход) — не коммерция.
+//
+//   conv  — зелёный: явное действие к деньгам (регистрация, бонус/промокод, скачать,
+//           играть/ставить, депозит) или чистый «бренд + страна» («1xbet ci»).
+//   brand — жёлтый: коммерческий без явного действия — чистый бренд («1xbet») или
+//           бренд + слово продукта («1xbet casino», «1xbet mobile»), «casino en ligne».
+//   null  — пусто: вход, проверка, прогнозы/купоны-подсказки, мессенджеры, «как…»,
+//           отзывы, вывод денег, и бренд с любыми другими словами без коммерции.
+// Языки ниши: испанский, португальский, французский, английский, чешский, русский.
 
 export type Intent = 'conv' | 'brand' | null;
 
-/** Нижний регистр без диакритики: «código» и «codigo» — одно слово. */
+/** Нижний регистр без диакритики и знаков: «código» = «codigo», «d'ivoire» = «d ivoire». */
 export function foldText(s: string): string {
   return s
     .normalize('NFD')
@@ -18,46 +28,60 @@ export function foldText(s: string): string {
 
 const list = (words: string[]) => words.map(foldText);
 
-// Вход и информационные: такие ключи всегда пустые, даже если там есть бренд.
+// Инфо и действующие игроки: всегда пусто, даже с брендом, бонусом и страной.
 const EMPTY = list([
+  // вход и аккаунт
   'iniciar sesion', 'inicio de sesion', 'login', 'log in', 'sign in', 'entrar', 'acceso', 'acessar', 'prihlaseni', 'prihlasit',
-  'вход', 'войти', 'личный кабинет',
-  'que es', 'what is', 'como funciona', 'como jugar', 'como apostar', 'how to', 'jak hrat', 'что такое', 'как',
-  'opiniones', 'opinion', 'resena', 'resenas', 'review', 'reviews', 'recenze', 'avaliacao', 'отзывы', 'обзор',
-  'es seguro', 'e seguro', 'confiavel', 'es confiable', 'is it safe', 'legal', 'es legal', 'licencia', 'scam', 'estafa', 'fraude', 'podvod',
-  'requisitos', 'telefono', 'contacto', 'atencion al cliente', 'soporte', 'support', 'kontakt'
+  'se connecter', 'connexion', 'mon compte', 'mi cuenta', 'minha conta', 'my account', 'вход', 'войти', 'личный кабинет',
+  'mot de passe', 'password', 'contrasena', 'senha', 'пароль',
+  // проверка, история, вывод — уже игроки
+  'verifier', 'verification', 'verificar', 'check', 'проверить', 'проверка',
+  'retrait', 'retirer', 'retiro', 'retirar', 'withdraw', 'withdrawal', 'saque', 'sacar', 'вывод', 'вывести',
+  // прогнозы, подсказки, «купоны на завтра», мессенджеры
+  'coupon', 'coupons', 'coupon de demain', 'pronostic', 'pronostics', 'prono', 'prediction', 'predictions', 'pronostico',
+  'pronosticos', 'tips', 'tipster', 'prognoz', 'прогноз', 'прогнозы', 'whatsapp', 'telegram', 'groupe', 'grupo', 'group', 'canal',
+  // информационные
+  'que es', 'what is', 'qu est ce', 'c est quoi', 'como funciona', 'comment', 'how to', 'como', 'jak', 'что такое', 'как',
+  'opiniones', 'opinion', 'avis', 'resena', 'resenas', 'review', 'reviews', 'recenze', 'avaliacao', 'отзывы', 'обзор',
+  'es seguro', 'e seguro', 'fiable', 'confiavel', 'es confiable', 'is it safe', 'legal', 'es legal', 'licencia', 'licence',
+  'scam', 'arnaque', 'estafa', 'fraude', 'podvod', 'requisitos', 'telefono', 'numero', 'contact', 'contacto', 'service client',
+  'atencion al cliente', 'soporte', 'support', 'kontakt', 'resultat', 'resultats', 'resultado', 'resultados', 'score', 'match'
 ]);
 
-// Конверсионные: бонус, код, регистрация, приложение, депозит, игра.
+// Явное действие к деньгам — зелёный.
 const CONV = list([
-  'bono', 'bonos', 'bonus', 'bonusy', 'bonusovy', 'bonusove', 'bonus code', 'bônus', 'бонус', 'бонусы',
-  'promo', 'promocion', 'promociones', 'promocional', 'promocao', 'promotion', 'promo code', 'промокод', 'промо',
-  'codigo', 'codigos', 'kod', 'kody', 'code', 'cupom', 'cupon', 'voucher',
-  'free spins', 'freespins', 'giros gratis', 'tiradas gratis', 'rodadas gratis', 'otoceni', 'zatoceni', 'zdarma', 'фриспины', 'фриспин',
-  'bez vkladu', 'no deposit', 'sin deposito', 'sem deposito', 'бездепозитный',
-  'registro', 'registrarse', 'registrate', 'register', 'registration', 'registrace', 'cadastro', 'sign up', 'регистрация',
-  'descargar', 'descarga', 'download', 'baixar', 'stahnout', 'apk', 'app', 'apps', 'aplicacion', 'aplicativo', 'aplikace', 'скачать', 'приложение',
-  'movil', 'mobile', 'celular', 'mobil',
-  'deposito', 'deposit', 'vklad', 'retiro', 'retirar', 'withdraw', 'saque', 'депозит', 'вывод',
-  'jugar', 'jogar', 'play', 'hrat', 'apostar', 'играть', 'en vivo', 'ao vivo', 'live', 'gratis', 'free', 'бесплатно'
+  'bono', 'bonos', 'bonus', 'bonusy', 'bonusovy', 'bonusove', 'bonus code', 'bonus de bienvenue', 'bônus', 'бонус', 'бонусы',
+  'promo', 'promocion', 'promociones', 'promocional', 'promocao', 'promotion', 'promo code', 'code promo', 'промокод',
+  'codigo promocional', 'codigo', 'kod', 'promo kod', 'cupom', 'cupon', 'voucher', 'free bet', 'freebet', 'pari gratuit',
+  'free spins', 'freespins', 'giros gratis', 'tiradas gratis', 'rodadas gratis', 'tours gratuits', 'otoceni', 'zatoceni', 'фриспины',
+  'bez vkladu', 'no deposit', 'sin deposito', 'sem deposito', 'sans depot', 'бездепозитный',
+  'registro', 'registrarse', 'registrate', 'register', 'registration', 'registrace', 'cadastro', 'sign up', 'inscription',
+  's inscrire', 'inscrire', 'creer un compte', 'crear cuenta', 'ouvrir un compte', 'регистрация', 'зарегистрироваться',
+  'descargar', 'descarga', 'download', 'baixar', 'stahnout', 'telecharger', 'telechargement', 'apk', 'скачать',
+  'deposito', 'deposit', 'depot', 'vklad', 'recharger', 'депозит', 'пополнить',
+  'jugar', 'jogar', 'play', 'hrat', 'jouer', 'apostar', 'parier', 'paris en ligne', 'paris sportif', 'paris sportifs',
+  'pari en ligne', 'apuestas en linea', 'apostas online', 'bet now', 'играть', 'сделать ставку', 'ставки онлайн'
 ]);
 
-// Коммерческие (жёлтые): игровые слова без явного действия.
+// Слова продукта/коммерции без явного действия — жёлтый.
 const COMMERCIAL = list([
-  'casino', 'casinos', 'cassino', 'kasino', 'kasina', 'online casino', 'казино',
-  'apuestas', 'apuesta', 'apostas', 'aposta', 'bet', 'bets', 'betting', 'sazky', 'sazkova', 'ставки', 'букмекер',
-  'slots', 'slot', 'tragamonedas', 'tragaperras', 'caca niqueis', 'automaty', 'слоты',
-  'ruleta', 'roleta', 'roulette', 'ruleta', 'blackjack', 'poker', 'aviator', 'crash', 'plinko', 'bingo', 'loteria',
-  'juegos', 'juego', 'jogos', 'jogo', 'games', 'hry', 'игры', 'deportivas', 'esportivas', 'sports'
+  'casino', 'casinos', 'cassino', 'kasino', 'kasina', 'online casino', 'casino en ligne', 'casino en linea', 'казино',
+  'apuestas', 'apuesta', 'apostas', 'aposta', 'paris', 'pari', 'bet', 'bets', 'betting', 'sazky', 'sazkova', 'ставки', 'букмекер',
+  'bookmaker', 'bookmakers', 'casa de apuestas', 'casa de apostas', 'site de paris', 'sportsbook',
+  'slots', 'slot', 'tragamonedas', 'tragaperras', 'machines a sous', 'caca niqueis', 'automaty', 'слоты',
+  'ruleta', 'roleta', 'roulette', 'blackjack', 'poker', 'aviator', 'crash', 'plinko', 'bingo', 'loteria',
+  'app', 'apps', 'application', 'aplicacion', 'aplicativo', 'aplikace', 'приложение', 'mobile', 'movil', 'mobil', 'celular',
+  'en ligne', 'en linea', 'online', 'live', 'en vivo', 'ao vivo', 'officiel', 'oficial', 'official', 'site', 'sitio', 'site officiel',
+  'meilleur', 'mejor', 'melhor', 'best', 'top', 'лучший'
 ]);
 
-// Известные бренды ниши (букмекеры, казино, игры) — брендовый запрос сразу жёлтый.
+// Известные бренды ниши.
 const KNOWN_BRANDS = list([
   '1xbet', '1x bet', 'melbet', 'mostbet', '1win', 'betwinner', 'pin up', 'pinup', 'parimatch', 'betway', 'bet365',
   '22bet', 'linebet', 'megapari', 'paripesa', 'betano', 'betplay', 'yajuego', 'aquijuego', 'codere', 'rushbet', 'wplay',
-  'stake', 'roobet', 'bc game', 'bcgame', 'vavada', 'joycasino', 'leon', 'fonbet', 'winline', 'betboom', 'olimpbet',
-  'wingaga', 'aviator', 'jetx', 'spribe', 'pragmatic', 'sweet bonanza', 'gates of olympus', 'plinko', 'chicken road',
-  'cricket road', 'mines', 'lucky jet', 'dafabet', 'fun88', 'betfair', 'sportybet', 'betika', 'premierbet', 'bangbet'
+  'stake', 'roobet', 'bc game', 'bcgame', 'vavada', 'joycasino', 'fonbet', 'winline', 'betboom', 'olimpbet',
+  'wingaga', 'jetx', 'spribe', 'sweet bonanza', 'gates of olympus', 'chicken road', 'cricket road', 'lucky jet',
+  'dafabet', 'fun88', 'betfair', 'sportybet', 'betika', 'premierbet', 'bangbet', 'premier bet'
 ]);
 
 // Части домена, которые не бренд: 1xbet-mobile.ci → «1xbet».
@@ -67,6 +91,56 @@ const DOMAIN_GENERIC = new Set(list([
   'play', 'win', 'get', 'best', 'top', 'new', 'pro', 'hub', 'info', 'zone', 'club', 'world', 'live', 'apuestas',
   'deportivas', 'aposta', 'apostas', 'kasino', 'cassino', 'uz', 'ci', 'pk', 'bd', 'in', 'br', 'co', 'cl', 'mx', 'ar', 'pe'
 ]));
+
+// Страны: «бренд + страна» — зелёный.
+const GEO = list([
+  "cote d'ivoire", 'cote divoire', 'ivory coast', 'civ', 'abidjan',
+  'colombia', 'chile', 'mexico', 'argentina', 'peru', 'ecuador', 'bolivia', 'paraguay', 'uruguay', 'venezuela',
+  'brasil', 'brazil', 'portugal', 'espana', 'spain',
+  'uzbekistan', 'ozbekiston', 'o zbekiston', 'uzb', 'узбекистан', 'tashkent', 'ташкент',
+  'kazakhstan', 'казахстан', 'kyrgyzstan', 'кыргызстан', 'tajikistan', 'azerbaijan', 'azerbaycan', 'азербайджан',
+  'russia', 'россия', 'рф', 'ukraine', 'украина', 'украiна', 'belarus', 'беларусь', 'georgia', 'armenia',
+  'pakistan', 'bangladesh', 'india', 'nepal', 'sri lanka', 'myanmar',
+  'nigeria', 'kenya', 'ghana', 'senegal', 'cameroun', 'cameroon', 'benin', 'togo', 'burkina faso', 'mali', 'guinee', 'guinea',
+  'congo', 'rdc', 'gabon', 'maroc', 'morocco', 'tunisie', 'tunisia', 'algerie', 'algeria', 'egypt', 'egypte',
+  'tanzania', 'uganda', 'zambia', 'zimbabwe', 'malawi', 'mozambique', 'south africa', 'ethiopia', 'somalia',
+  'turkey', 'turkiye', 'philippines', 'indonesia', 'malaysia', 'vietnam', 'thailand', 'cambodia',
+  'cesko', 'ceska', 'ceske', 'czech', 'slovensko', 'slovakia', 'polska', 'poland', 'romania', 'moldova',
+  'canada', 'usa', 'uk', 'australia', 'deutschland', 'germany', 'france', 'italia', 'italy'
+]);
+// Короткие коды стран — только отдельным словом.
+const GEO_CODES = new Set(['ci', 'uz', 'pk', 'bd', 'br', 'co', 'cl', 'mx', 'ar', 'pe', 'ec', 'ng', 'ke', 'gh', 'sn', 'cm', 'tz', 'ug', 'za', 'kz', 'kg', 'az', 'tr', 'ph', 'np', 'cz', 'sk', 'pl', 'ru', 'ua', 'by', 'ma', 'eg', 'bj', 'tg', 'bf', 'ml', 'cd', 'cg', 'ga', 'zm', 'mw', 'et']);
+
+// Служебные слова, которые не меняют смысл: «1xbet en côte d'ivoire», «de», «la».
+const FILLER = new Set(list(['de', 'du', 'des', 'la', 'le', 'les', 'el', 'los', 'en', 'a', 'au', 'do', 'da', 'na', 'no', 'the', 'of', 'in', 'for', 'para', 'pour', 'v', 'na', 'в', 'на', 'и', 'y', 'et', 'e', '2024', '2025', '2026', '2027']));
+
+function hasPhrase(q: string, words: string[]): boolean {
+  const padded = ` ${q} `;
+  return words.some((w) => w && padded.includes(` ${w} `));
+}
+
+/** Убрать из ключа найденные фразы — что осталось, то и «другие слова». */
+function stripPhrases(q: string, words: string[]): string {
+  let out = ` ${q} `;
+  for (const w of [...words].sort((a, b) => b.length - a.length)) {
+    if (w) out = out.split(` ${w} `).join(' ');
+  }
+  return out.trim().replace(/\s+/g, ' ');
+}
+
+/** Слова-бренды из адреса страницы: /review/yajuego/ → yajuego. */
+function slugWords(page: string): string[] {
+  let path = '';
+  try {
+    path = new URL(page).pathname;
+  } catch {
+    return [];
+  }
+  const skip = new Set(list(['review', 'reviews', 'resena', 'casino', 'bonus', 'bono', 'app', 'apk', 'promo', 'code', 'codigo', 'es', 'en', 'fr', 'pt', 'cz', 'html', 'php', 'blog', 'page', 'download', 'telecharger', 'coupon', 'connexion', 'inscription']));
+  return foldText(path.replace(/[-_/.]+/g, ' '))
+    .split(' ')
+    .filter((w) => w.length >= 4 && !skip.has(w) && !/^\d+$/.test(w));
+}
 
 /** Бренд из домена страницы: cricket-road.app → «cricket road», 1xbet-mobile.ci → «1xbet». */
 function domainBrands(page: string): string[] {
@@ -83,75 +157,49 @@ function domainBrands(page: string): string[] {
   return phrase.replace(/ /g, '').length >= 3 ? [phrase] : [];
 }
 
-// Страны: бренд + страна («1xbet ci», «yajuego colombia») — зелёный, такие ключи продвигаем.
-const GEO = list([
-  "cote d'ivoire", "cote d ivoire", 'cote divoire', 'ivory coast', 'civ', 'abidjan',
-  'colombia', 'chile', 'mexico', 'argentina', 'peru', 'ecuador', 'bolivia', 'paraguay', 'uruguay', 'venezuela',
-  'brasil', 'brazil', 'portugal', 'espana', 'spain',
-  'uzbekistan', 'ozbekiston', "o'zbekiston", 'uzb', 'узбекистан', 'tashkent', 'ташкент',
-  'kazakhstan', 'казахстан', 'kyrgyzstan', 'кыргызстан', 'tajikistan', 'azerbaijan', 'azerbaycan', 'азербайджан',
-  'russia', 'россия', 'рф', 'ukraine', 'украина', 'україна', 'belarus', 'беларусь', 'georgia', 'armenia',
-  'pakistan', 'bangladesh', 'india', 'nepal', 'sri lanka', 'myanmar',
-  'nigeria', 'kenya', 'ghana', 'senegal', 'cameroun', 'cameroon', 'benin', 'togo', 'burkina faso', 'mali', 'guinee', 'guinea',
-  'congo', 'rdc', 'gabon', 'maroc', 'morocco', 'tunisie', 'tunisia', 'algerie', 'algeria', 'egypt', 'egypte',
-  'tanzania', 'uganda', 'zambia', 'zimbabwe', 'malawi', 'mozambique', 'south africa', 'ethiopia', 'somalia',
-  'turkey', 'turkiye', 'philippines', 'indonesia', 'malaysia', 'vietnam', 'thailand', 'cambodia',
-  'cesko', 'ceska', 'ceske', 'czech', 'slovensko', 'slovakia', 'polska', 'poland', 'romania', 'moldova',
-  'canada', 'usa', 'uk', 'australia', 'deutschland', 'germany', 'france', 'italia', 'italy'
-]);
-// Короткие коды стран — только отдельным словом.
-const GEO_CODES = new Set(['ci', 'uz', 'pk', 'bd', 'br', 'co', 'cl', 'mx', 'ar', 'pe', 'ec', 'ng', 'ke', 'gh', 'sn', 'cm', 'tz', 'ug', 'za', 'kz', 'kg', 'az', 'tr', 'ph', 'np', 'cz', 'sk', 'pl', 'ru', 'ua', 'by', 'ma', 'eg', 'bj', 'tg', 'bf', 'ml', 'cd', 'cg', 'ga', 'zm', 'mw', 'et']);
-
-function hasGeo(q: string, page: string): boolean {
-  if (hasPhrase(q, GEO)) return true;
-  const tokens = q.split(' ');
-  if (tokens.some((t) => GEO_CODES.has(t))) return true;
-  // Код страны из домена сайта: для 1xbet-mobile.ci слово «ci» — страна.
+function siteCcTld(page: string): string | null {
   try {
     const tld = new URL(page).hostname.split('.').pop() ?? '';
-    if (tld.length === 2 && tokens.includes(tld)) return true;
+    return tld.length === 2 ? tld : null;
   } catch {
-    /* без адреса — только словарь */
+    return null;
   }
-  return false;
-}
-
-function hasPhrase(q: string, words: string[]): boolean {
-  const padded = ` ${q} `;
-  return words.some((w) => w && padded.includes(` ${w} `));
-}
-
-/** Слова-бренды из адреса страницы: /review/yajuego/ → yajuego. */
-function slugWords(page: string): string[] {
-  let path = '';
-  try {
-    path = new URL(page).pathname;
-  } catch {
-    return [];
-  }
-  const skip = new Set(list(['review', 'reviews', 'resena', 'casino', 'bonus', 'bono', 'app', 'apk', 'promo', 'code', 'codigo', 'es', 'en', 'pt', 'cz', 'html', 'php', 'blog', 'page']));
-  return foldText(path.replace(/[-_/.]+/g, ' '))
-    .split(' ')
-    .filter((w) => w.length >= 4 && !skip.has(w) && !/^\d+$/.test(w));
 }
 
 export function classifyIntent(query: string, page = '', brandTerms: string[] = []): Intent {
   const q = foldText(query);
   if (!q) return null;
+  // 1. Инфо и действующие игроки — пусто, что бы ещё ни было в ключе.
   if (hasPhrase(q, EMPTY)) return null;
+  // 2. Явное действие к деньгам — зелёный.
   if (hasPhrase(q, CONV)) return 'conv';
-  const tokens = q.split(' ');
-  const brands = [...slugWords(page), ...domainBrands(page), ...brandTerms.map(foldText).filter((t) => t.length >= 3)];
-  // Бренд целиком, фразой или склеенный («yajuego» и «ya juego», «cricket road» и «cricketroad»).
-  const glued = tokens.join('');
-  const branded =
-    hasPhrase(q, KNOWN_BRANDS) ||
-    brands.some((b) => {
-      const bg = b.replace(/ /g, '');
-      return tokens.includes(b) || hasPhrase(q, [b]) || (bg.length >= 4 && glued.includes(bg));
-    });
-  // Бренд + страна — человек ищет, где играть у бренда в своей стране: зелёный.
-  if (branded && hasGeo(q, page)) return 'conv';
-  if (branded || hasPhrase(q, COMMERCIAL)) return 'brand';
+
+  // 3. Бренд: известный, из домена, из адреса страницы, из Brand terms сайта.
+  const extra = [...slugWords(page), ...domainBrands(page), ...brandTerms.map(foldText).filter((t) => t.length >= 3)];
+  const brandWords = [...KNOWN_BRANDS, ...extra];
+  let rest = stripPhrases(q, brandWords);
+  // Склеенное написание бренда: «ya juego» → «yajuego», «cricketroad» → «cricket road».
+  const glued = q.replace(/ /g, '');
+  const gluedBrand = brandWords.some((b) => b.replace(/ /g, '').length >= 4 && glued.includes(b.replace(/ /g, '')));
+  const branded = rest !== q || gluedBrand;
+  if (gluedBrand && rest === q) rest = '';
+
+  const cc = siteCcTld(page);
+  const geoWords = [...GEO, ...GEO_CODES, ...(cc ? [cc] : [])];
+  const withoutFiller = (s: string) => s.split(' ').filter((t) => t && !FILLER.has(t)).join(' ');
+
+  if (branded) {
+    // Сначала убираем фразы (страны, слова продукта), служебные слова — в конце:
+    // иначе «en vivo» распалось бы на «vivo».
+    const noGeo = stripPhrases(rest, geoWords);
+    // 3a. Чистый «бренд + страна» — зелёный.
+    if (!withoutFiller(noGeo) && withoutFiller(rest)) return 'conv';
+    // 3b. Чистый бренд или бренд + слова продукта — жёлтый.
+    if (!withoutFiller(stripPhrases(noGeo, COMMERCIAL))) return 'brand';
+    // 3c. Бренд + другие слова без коммерции — пусто: бренд сам по себе не коммерция.
+    return null;
+  }
+  // 4. Без бренда: только слова продукта/коммерции — жёлтый («casino en ligne», «meilleur bookmaker»).
+  if (hasPhrase(q, COMMERCIAL) && !withoutFiller(stripPhrases(q, [...COMMERCIAL, ...geoWords]))) return 'brand';
   return null;
 }
