@@ -51,6 +51,38 @@ const COMMERCIAL = list([
   'juegos', 'juego', 'jogos', 'jogo', 'games', 'hry', 'игры', 'deportivas', 'esportivas', 'sports'
 ]);
 
+// Известные бренды ниши (букмекеры, казино, игры) — брендовый запрос сразу жёлтый.
+const KNOWN_BRANDS = list([
+  '1xbet', '1x bet', 'melbet', 'mostbet', '1win', 'betwinner', 'pin up', 'pinup', 'parimatch', 'betway', 'bet365',
+  '22bet', 'linebet', 'megapari', 'paripesa', 'betano', 'betplay', 'yajuego', 'aquijuego', 'codere', 'rushbet', 'wplay',
+  'stake', 'roobet', 'bc game', 'bcgame', 'vavada', 'joycasino', 'leon', 'fonbet', 'winline', 'betboom', 'olimpbet',
+  'wingaga', 'aviator', 'jetx', 'spribe', 'pragmatic', 'sweet bonanza', 'gates of olympus', 'plinko', 'chicken road',
+  'cricket road', 'mines', 'lucky jet', 'dafabet', 'fun88', 'betfair', 'sportybet', 'betika', 'premierbet', 'bangbet'
+]);
+
+// Части домена, которые не бренд: 1xbet-mobile.ci → «1xbet».
+const DOMAIN_GENERIC = new Set(list([
+  'app', 'apps', 'apk', 'mobile', 'mobi', 'casino', 'casinos', 'online', 'game', 'games', 'official', 'site', 'web',
+  'login', 'download', 'bonus', 'promo', 'code', 'review', 'reviews', 'bet', 'bets', 'betting', 'sport', 'sports',
+  'play', 'win', 'get', 'best', 'top', 'new', 'pro', 'hub', 'info', 'zone', 'club', 'world', 'live', 'apuestas',
+  'deportivas', 'aposta', 'apostas', 'kasino', 'cassino', 'uz', 'ci', 'pk', 'bd', 'in', 'br', 'co', 'cl', 'mx', 'ar', 'pe'
+]));
+
+/** Бренд из домена страницы: cricket-road.app → «cricket road», 1xbet-mobile.ci → «1xbet». */
+function domainBrands(page: string): string[] {
+  let host = '';
+  try {
+    host = new URL(page).hostname.toLowerCase().replace(/^www\./, '');
+  } catch {
+    return [];
+  }
+  const label = host.split('.').slice(0, -1).join('.') || host;
+  const parts = label.split(/[-_.]+/).map(foldText).filter((w) => w && !DOMAIN_GENERIC.has(w) && !/^\d+$/.test(w));
+  if (!parts.length) return [];
+  const phrase = parts.join(' ');
+  return phrase.replace(/ /g, '').length >= 3 ? [phrase] : [];
+}
+
 function hasPhrase(q: string, words: string[]): boolean {
   const padded = ` ${q} `;
   return words.some((w) => w && padded.includes(` ${w} `));
@@ -76,10 +108,17 @@ export function classifyIntent(query: string, page = '', brandTerms: string[] = 
   if (hasPhrase(q, EMPTY)) return null;
   if (hasPhrase(q, CONV)) return 'conv';
   if (hasPhrase(q, COMMERCIAL)) return 'brand';
+  if (hasPhrase(q, KNOWN_BRANDS)) return 'brand';
   const tokens = q.split(' ');
-  const brands = [...slugWords(page), ...brandTerms.map(foldText).filter((t) => t.length >= 3)];
-  // Бренд целиком или склеенный («yajuego» и «ya juego» → «yajuego»).
+  const brands = [...slugWords(page), ...domainBrands(page), ...brandTerms.map(foldText).filter((t) => t.length >= 3)];
+  // Бренд целиком, фразой или склеенный («yajuego» и «ya juego», «cricket road» и «cricketroad»).
   const glued = tokens.join('');
-  if (brands.some((b) => tokens.includes(b) || (b.length >= 4 && glued.includes(b)))) return 'brand';
+  if (
+    brands.some((b) => {
+      const bg = b.replace(/ /g, '');
+      return tokens.includes(b) || hasPhrase(q, [b]) || (bg.length >= 4 && glued.includes(bg));
+    })
+  )
+    return 'brand';
   return null;
 }

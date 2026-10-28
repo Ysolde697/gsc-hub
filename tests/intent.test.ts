@@ -25,6 +25,21 @@ describe('classifyIntent', () => {
     expect(classifyIntent('wingaga česká', 'https://wingagacasino.cz/', ['wingaga'])).toBe('brand');
   });
 
+  it('известные бренды и бренд из домена — жёлтые', () => {
+    const CI = 'https://1xbet-mobile.ci/';
+    expect(classifyIntent('1xbet', CI)).toBe('brand');
+    expect(classifyIntent('1xbet ci', CI)).toBe('brand');
+    expect(classifyIntent("1xbet cote d'ivoire", CI)).toBe('brand');
+    expect(classifyIntent("1xbet côte d'ivoire", CI)).toBe('brand');
+    expect(classifyIntent('mostbet uz')).toBe('brand');
+    expect(classifyIntent('cricketroad', 'https://cricket-road.app/')).toBe('brand');
+    expect(classifyIntent('cricket road', 'https://cricket-road.app/')).toBe('brand');
+    // Действие с брендом — по-прежнему зелёное.
+    expect(classifyIntent('1xbet apk', CI)).toBe('conv');
+    // Части домена вроде «official» брендом не считаются.
+    expect(classifyIntent('official shop hours', CI)).toBeNull();
+  });
+
   it('вход и инфо — пусто, даже с брендом или бонусом', () => {
     expect(classifyIntent('betplay inicio casino iniciar sesión', B)).toBeNull();
     expect(classifyIntent('yajuego opiniones', P)).toBeNull();
