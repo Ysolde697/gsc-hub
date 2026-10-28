@@ -288,6 +288,21 @@
         </form>
         </details>
 
+        {#if data.overlaps.length}
+          <div class="border-b border-line bg-warn-t/50 p-3">
+            <div class="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-2">⚠ Пересечения · {data.overlaps.length}</div>
+            <p class="mb-2 text-xs text-ink-3">Эти ключи отобраны сразу для нескольких ваших сайтов — они будут конкурировать. Обычно основную массу ссылок даёт один главный сайт, остальным минимум. Количество меняется в таблице ниже.</p>
+            <ul class="space-y-1 text-xs">
+              {#each data.overlaps as o (o.query)}
+                <li class="flex flex-wrap items-center gap-1.5">
+                  <span class="pii font-medium text-ink">{o.query}:</span>
+                  {#each o.sites as st (st.host)}<span class="pii rounded bg-pane px-1.5 py-0.5 text-ink-2">{st.host} — <b>{st.qty}</b> шт</span>{/each}
+                </li>
+              {/each}
+            </ul>
+          </div>
+        {/if}
+
         <div class="p-3">
           <div class="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-3">ТЗ на ссылки · {data.items.length} строк · {data.items.reduce((a, i) => a + i.qty, 0)} ссылок</div>
           {#if data.items.length === 0}

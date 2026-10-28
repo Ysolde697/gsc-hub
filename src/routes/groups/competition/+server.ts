@@ -1,0 +1,30 @@
+import { json, error } from '@sveltejs/kit';
+import type { RequestHandler } from './$types';
+import { db } from '$lib/server/db';
+import { requireAdmin } from '$lib/server/guard';
+import { fetchQueryOwners } from '$lib/server/google';
+import { linksByQuery } from '$lib/server/group-items';
+import { foldQuery, hostKey } from '$lib/utils/fold-query';
+
+/**
+ * Колонка «Мои другие сайты»: { site, queries[] } → по каждому ключу другие
+ * ваши сайты с показами по нему и ссылки, уже отобранные на них в группах.
+ * ?links=1 — только ссылки, без запросов в Google (быстро).
+ */
+export const POST: RequestHandler = async ({ request, url, locals }) => {
+  requireAdmin(locals);
+  const body = (await request.json().catch(() => null)) as { site?: unknown; queries?: unknown } | null;
+  if (!body || typeof body.site !== 'string' || !Array.isArray(body.queries)) throw error(400, 'нужно { site, queries }');
+  const me = hostKey(body.site);
+  const queries = body.queries.filter((q): q is string => typeof q === 'string').slice(0, 5000);
+  const links = linksByQuery(db());
+  const owners = url.searchParams.get('links') === '1' ? null : await fetchQueryOwners(db());
+  const out: Record<string, { owners: unknown[]; links: unknown[] }> = {};
+  for (const q of queries) {
+    const k = foldQuery(q);
+    const o = (owners?.get(k) ?? []).filter((x) => x.host !== me);
+    const l = (links.get(k) ?? []).filter((x) => x.host !== me);
+    if (o.length || l.length) out[q] = { owners: o, links: l };
+  }
+  return json({ byQuery: out, ownersLoaded: owners !== null });
+};

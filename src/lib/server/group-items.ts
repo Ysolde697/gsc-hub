@@ -1,3 +1,4 @@
+import { foldQuery, hostKey } from '$lib/utils/fold-query';
 import type { Db } from './db';
 
 // Ключи группы: связки «страница + ключ», отобранные в Striking Distance.
@@ -199,4 +200,53 @@ export function groupItemsCsv(groupName: string, items: GroupItem[]): string {
       .join(';')
   );
   return '\uFEFF' + [head.join(';'), ...lines].join('\r\n') + '\r\n';
+}
+
+export interface QueryLink {
+  host: string;
+  groupId: number;
+  groupName: string;
+  qty: number;
+  at: number;
+}
+
+/** Анкорные ссылки по ключу на всех сайтах: ключ (нормальная форма) → где и сколько. */
+export function linksByQuery(db: Db): Map<string, QueryLink[]> {
+  const rows = db
+    .prepare(
+      `SELECT i.site_url, i.query, i.qty, g.id, g.name, COALESCE(g.fixed_at, g.created_at) AS at
+         FROM site_group_items i JOIN site_groups g ON g.id = i.group_id
+        WHERE i.kind = 'anchor' ORDER BY g.created_at, g.id`
+    )
+    .all() as { site_url: string; query: string; qty: number; id: number; name: string; at: number }[];
+  const out = new Map<string, QueryLink[]>();
+  for (const r of rows) {
+    const k = foldQuery(r.query);
+    const list = out.get(k) ?? [];
+    list.push({ host: hostKey(r.site_url), groupId: r.id, groupName: r.name, qty: r.qty, at: r.at });
+    out.set(k, list);
+  }
+  return out;
+}
+
+export interface Overlap {
+  query: string;
+  sites: { host: string; qty: number }[];
+}
+
+/** Пересечения в группе: один ключ отобран для двух и более сайтов. */
+export function groupOverlaps(items: GroupItem[]): Overlap[] {
+  const by = new Map<string, { query: string; sites: Map<string, number> }>();
+  for (const i of items) {
+    if (i.kind !== 'anchor') continue;
+    const k = foldQuery(i.query);
+    const e = by.get(k) ?? { query: i.query, sites: new Map<string, number>() };
+    const h = hostKey(i.siteUrl);
+    e.sites.set(h, (e.sites.get(h) ?? 0) + i.qty);
+    by.set(k, e);
+  }
+  return [...by.values()]
+    .filter((e) => e.sites.size > 1)
+    .map((e) => ({ query: e.query, sites: [...e.sites].map(([host, qty]) => ({ host, qty })).sort((a, b) => b.qty - a.qty) }))
+    .sort((a, b) => a.query.localeCompare(b.query));
 }

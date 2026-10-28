@@ -15,6 +15,7 @@ import { listHiddenSites } from './hidden';
 import { activeGroupHosts, siteInHosts } from './site-groups';
 import { hostOfSite } from './site-events';
 import { mergePageFragments } from './merge-fragments';
+import { foldQuery, hostKey } from '$lib/utils/fold-query';
 
 const REFRESH_URL = 'https://oauth2.googleapis.com/token';
 const SITES_URL = 'https://searchconsole.googleapis.com/webmasters/v3/sites';
@@ -1406,4 +1407,52 @@ export async function fetchPortfolioDaily(db: Db, days: number = 180): Promise<P
     hosts: [...new Set(pairs.map(({ site }) => hostOfSite(site.siteUrl)))],
     errors
   };
+}
+
+// ─── Кто из моих сайтов виден по ключу ─────────────────────────────────────────
+// Для колонки «Мои другие сайты»: по всем сайтам всех рабочих консолей, без
+// фильтров шапки (конкурировать сайт может и с тем, что сейчас скрыт).
+
+export interface QueryOwner {
+  host: string;
+  siteUrl: string;
+  accountId: string;
+  position: number;
+  impressions: number;
+  clicks: number;
+}
+
+export async function fetchQueryOwners(db: Db, days = 28): Promise<Map<string, QueryOwner[]>> {
+  return gscCached(`owners:${days}`, async () => {
+    const accounts = listAccounts(db).filter((a) => a.status === 'active');
+    const perAccount = await Promise.allSettled(accounts.map((a) => listSitesForAccount(db, a)));
+    const pairs: { acc: AccountRow; site: SiteRow }[] = [];
+    perAccount.forEach((r, i) => {
+      if (r.status === 'fulfilled') r.value.forEach((site) => pairs.push({ acc: accounts[i], site }));
+    });
+    const { startDate, endDate } = gscDateRange(days);
+    const perSite = await mapSettledLimit(pairs, ({ acc, site }) =>
+      searchAnalyticsQuery(db, acc, site.siteUrl, { startDate, endDate, dimensions: ['query'], rowLimit: 5000 })
+    );
+    // ключ → домен → лучшая строка (у домена может быть две property: sc-domain: и https://)
+    const byQuery = new Map<string, Map<string, QueryOwner>>();
+    perSite.forEach((r, i) => {
+      if (r.status !== 'fulfilled') return;
+      const { acc, site } = pairs[i];
+      const host = hostKey(site.siteUrl);
+      for (const row of r.value) {
+        const q = foldQuery(row.keys[0] ?? '');
+        if (!q) continue;
+        const hosts = byQuery.get(q) ?? new Map<string, QueryOwner>();
+        const cur = hosts.get(host);
+        if (!cur || row.impressions > cur.impressions) {
+          hosts.set(host, { host, siteUrl: site.siteUrl, accountId: acc.id, position: row.position, impressions: row.impressions, clicks: row.clicks });
+        }
+        byQuery.set(q, hosts);
+      }
+    });
+    const out = new Map<string, QueryOwner[]>();
+    for (const [q, hosts] of byQuery) if (hosts.size > 1) out.set(q, [...hosts.values()].sort((a, b) => a.position - b.position));
+    return out;
+  }, 60 * 60 * 1000);
 }

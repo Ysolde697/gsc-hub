@@ -246,3 +246,47 @@ export async function toggleItem(r: ItemRow) {
     gi.busy = next;
   }
 }
+
+// ─── «Мои другие сайты»: кто ещё из ваших сайтов виден по ключу ────────────────
+export interface OtherOwner { host: string; position: number; impressions: number; clicks: number }
+export interface OtherLink { host: string; groupId: number; groupName: string; qty: number; at: number }
+
+export const comp = $state({
+  byQuery: {} as Record<string, { owners: OtherOwner[]; links: OtherLink[] }>,
+  loading: false,
+  ownersLoaded: false,
+  error: null as string | null
+});
+
+let compKey = '';
+
+/** Сначала быстро — ссылки из групп, затем позиции других сайтов из Google. */
+export async function loadCompetition(site: string, queries: string[]) {
+  const key = site + '\n' + queries.join('\n');
+  if (key === compKey) return;
+  compKey = key;
+  const ask = async (linksOnly: boolean) => {
+    const res = await fetch('/groups/competition' + (linksOnly ? '?links=1' : ''), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ site, queries })
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  };
+  try {
+    comp.loading = true;
+    comp.error = null;
+    const fast = await ask(true);
+    if (key !== compKey) return;
+    comp.byQuery = fast.byQuery;
+    const full = await ask(false);
+    if (key !== compKey) return;
+    comp.byQuery = full.byQuery;
+    comp.ownersLoaded = true;
+  } catch (e) {
+    comp.error = (e as Error).message;
+  } finally {
+    if (key === compKey) comp.loading = false;
+  }
+}

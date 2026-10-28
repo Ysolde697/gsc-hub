@@ -12,8 +12,9 @@
   import GroupCell from '$lib/components/GroupCell.svelte';
   import IntentBadge from '$lib/components/IntentBadge.svelte';
   import LastPlanCell from '$lib/components/LastPlanCell.svelte';
+  import OtherSitesCell from '$lib/components/OtherSitesCell.svelte';
   import SiteLinkHistory from '$lib/components/SiteLinkHistory.svelte';
-  import { loadGroupItems } from '$lib/group-items.svelte';
+  import { loadGroupItems, loadCompetition, comp } from '$lib/group-items.svelte';
   import { sortStriking, type StrikingSortKey, type SortDirection } from '$lib/utils/striking-sort';
   import { siteHostname, urlExcluded, urlMatchesMask, type UrlExclusion } from '$lib/utils/url-filters';
 
@@ -152,6 +153,11 @@
     (query) => serpAsked.has(query) ? serpPositions.get(query) ?? null : null,
     (page, query) => boughtFor(page, query)?.quantity ?? 0
   ));
+  // «Мои другие сайты»: подгрузить по ключам, которые сейчас в таблице.
+  $effect(() => {
+    if (tab !== 'keywords' || strikingRows.length === 0) return;
+    loadCompetition(data.siteUrl, [...new Set(strikingRows.map((r: { query: string }) => r.query))]);
+  });
   const selectedVisible = $derived(strikingRows.filter((r: { page: string; query: string }) => selectedPairs.has(pairKey(r.page, r.query))).length);
 
   async function filterUrls() {
@@ -781,6 +787,7 @@
                           <th class="sort-th num" aria-sort={sortAria('clicks')}><button type="button" class="hover:text-ink" onclick={() => sortBy('clicks')}>Clicks<SortCaret dir={sortArrow('clicks')} /></button></th>
                           <th class="sort-th num" aria-sort={sortAria('ctr')}><button type="button" class="hover:text-ink" onclick={() => sortBy('ctr')}>CTR<SortCaret dir={sortArrow('ctr')} /></button></th>
                           <th class="sort-th num" aria-sort={sortAria('bought')}><button type="button" class="hover:text-ink" onclick={() => sortBy('bought')}>Куплено<SortCaret dir={sortArrow('bought')} /></button></th>
+                          <th title="Другие ваши сайты с показами по этому ключу и ссылки на них. Красным — другой сайт стоит выше">Мои другие сайты</th>
                           <th title="Когда на этот ключ в последний раз брали ссылки: группа, сколько, как давно">Последняя закупка</th>
                       <th class="num" title="Клик — добавить связку «ключ + страница» в выбранную группу">В группу</th>
                           <th class="num w-20"></th></tr>
@@ -812,6 +819,7 @@
                                 <span class="text-ink-4">—</span>
                               {/if}
                             </td>
+                            <td><OtherSitesCell query={r.query} position={r.position} /></td>
                             <td><LastPlanCell page={r.page} query={r.query} /></td>
                             <td class="num"><GroupCell row={{ siteUrl: data.siteUrl, query: r.query, page: r.page, position: r.position, impressions: r.impressions, clicks: r.clicks, ctr: r.ctr }} /></td>
                             <td class="num">
@@ -823,7 +831,7 @@
                           {#if historyOpen === k && boughtFor(r.page, r.query)}
                             <tr class="bg-sunk">
                               <td></td>
-                              <td colspan="12" class="text-xs">
+                              <td colspan="13" class="text-xs">
                                 {#each boughtFor(r.page, r.query)!.orders as o (o.orderId)}
                                   <a class="mr-4 text-acc hover:underline"
                                     href="/magiclinks/{o.orderId}?url={encodeURIComponent(r.page)}&q={encodeURIComponent(r.query)}">

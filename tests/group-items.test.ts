@@ -140,3 +140,36 @@ describe('ключи группы (закупка)', () => {
     expect(h[1].fixedAt).toBeTypeOf('number');
   });
 });
+
+import { groupOverlaps, linksByQuery } from '../src/lib/server/group-items';
+
+describe('пересечения ключей между сайтами', () => {
+  let dir: string;
+  let db: Db;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'gsc-hub-'));
+    db = openDb(join(dir, 't.db'));
+  });
+  afterEach(() => {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('ключ у двух сайтов в группе — пересечение с количеством по сайтам', () => {
+    const g = createSiteGroup(db, '28-10-26');
+    addGroupItem(db, g, { ...item('Cricket Road Game', 'https://cricket-road.app/game/', 'https://cricket-road.app/'), qty: 20 });
+    addGroupItem(db, g, { ...item('cricket road game', 'https://www.cricket-road.games/', 'sc-domain:cricket-road.games'), qty: 5 });
+    addGroupItem(db, g, item('только один сайт'));
+    const o = groupOverlaps(listGroupItems(db, g));
+    expect(o).toEqual([{ query: 'Cricket Road Game', sites: [{ host: 'cricket-road.app', qty: 20 }, { host: 'cricket-road.games', qty: 5 }] }]);
+  });
+
+  it('ссылки по ключу на всех сайтах, без учёта регистра и диакритики', () => {
+    const a = createSiteGroup(db, 'A');
+    addGroupItem(db, a, { ...item('código bono', 'https://x.co/p', 'https://x.co/'), qty: 3 });
+    addNakedItem(db, a, 'https://x.co/', 'https://x.co/', 9);
+    const m = linksByQuery(db);
+    expect(m.get('codigo bono')).toMatchObject([{ host: 'x.co', groupName: 'A', qty: 3 }]);
+    expect(m.has('')).toBe(false);
+  });
+});

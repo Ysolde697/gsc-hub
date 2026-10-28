@@ -14,7 +14,7 @@ import {
   parseHostList,
   setHostDone
 } from '$lib/server/site-groups';
-import { listGroupItems, setGroupFixed, removeGroupItemById, todayGroupName, addNakedItem, setItemQtyById } from '$lib/server/group-items';
+import { listGroupItems, setGroupFixed, removeGroupItemById, todayGroupName, addNakedItem, setItemQtyById, groupOverlaps } from '$lib/server/group-items';
 import { siteHostname } from '$lib/utils/url-filters';
 
 export const load: PageServerLoad = async ({ locals, url }) => {
@@ -43,6 +43,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     selectedId: selected?.id ?? null,
     today: todayGroupName(),
     items: selected ? listGroupItems(db(), selected.id) : [],
+    overlaps: selected ? groupOverlaps(listGroupItems(db(), selected.id)) : [],
     knownSites: [...byHost.values()].sort((a, b) => a.host.localeCompare(b.host)),
     siteErrors: errors.map((e) => ({ account: e.accountEmail, reason: e.reason }))
   };
