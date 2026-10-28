@@ -1083,12 +1083,6 @@
       <span class="app-toolbar-divider" aria-hidden="true"></span>
       <a href="/dashboard?days={data.days}" class="btn btn-ghost">Dashboard</a>
       <a href="/properties/striking?days={data.days}" class="btn btn-ghost" title="Portfolio analytics across all sites — striking distance, cannibalization, CTR, branded, decay">Portfolio</a>
-      <div class="btn-group" role="group" aria-label="Submit all sites">
-        <span class="btn-group-label">Submit all</span>
-        <button type="button" class="btn btn-ghost" onclick={() => window.open(`${aiBase}/properties/submit-all?op=sitemap`, '_blank')} title="Resubmit every site's sitemaps to Google">Sitemaps</button>
-        <button type="button" class="btn btn-ghost" onclick={() => window.open(`${aiBase}/properties/submit-all?op=bing`, '_blank')} title="Submit every sitemap to Bing">Bing</button>
-        <button type="button" class="btn btn-ghost" onclick={() => window.open(`${aiBase}/properties/submit-all?op=indexnow`, '_blank')} title="Push every site's URLs to IndexNow">IndexNow</button>
-      </div>
       <button type="button" class="btn btn-pri" onclick={refreshAll}>
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M13.5 8A5.5 5.5 0 1 1 11.8 4M13.5 2v3h-3"/></svg>
         Refresh
@@ -1304,69 +1298,12 @@
                   <td class="num app-num hidden whitespace-nowrap text-ink-3 lg:table-cell" title="Дата создания сайта">{fmtDate(s.createdAt)}</td>
                   <td class="num app-num hidden md:table-cell {s.bing ? '' : 'text-ink-4'}" title="Bing · последние ~2 недели">{s.bing ? fmtNum(s.bing.clicks) : '—'}</td>
                   <td class="num app-num hidden md:table-cell {s.bing ? '' : 'text-ink-4'}" title="Bing · последние ~2 недели">{s.bing ? fmtNum(s.bing.impressions) : '—'}</td>
-                  <td class="row-tray print:hidden" onclick={(e) => e.stopPropagation()}>
-                    <div class="row-tray-body">
-                      <button
-                        type="button"
-                        class="btn btn-ghost btn-sm"
-                        title="Resubmit sitemap(s) to Google"
-                        disabled={subSt?.kind === 'loading'}
-                        onclick={(e) => { e.stopPropagation(); submitSitemapFor({ accountId: s.accountId, siteUrl: s.siteUrl }); }}
-                      >{subSt?.kind === 'loading' ? '…' : 'Submit sitemap'}</button>
-                      {#if subSt?.kind === 'done'}
-                        <span class="app-num text-[11px] {subSt.failed > 0 ? 'text-warn' : 'text-up'}" title={subSt.failed > 0 ? subSt.failReasons.join('\n') : `source: ${subSt.source}`}><svg viewBox="0 0 12 12" class="inline-block h-3 w-3 align-[-2px]" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 6.5 5 9l4.5-6"/></svg> {subSt.submitted}{#if subSt.failed > 0} · <svg viewBox="0 0 12 12" class="inline-block h-3 w-3 align-[-2px]" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6"/></svg> {subSt.failed}{/if}</span>
-                      {:else if subSt?.kind === 'error'}
-                        <span class="text-[11px] text-dn" title={subSt.message}><svg viewBox="0 0 12 12" class="inline-block h-3 w-3 align-[-2px]" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6"/></svg> failed</span>
-                      {/if}
-                      <button
-                        type="button"
-                        class="btn btn-ghost btn-sm"
-                        title="Submit sitemap to Bing"
-                        disabled={bSt?.kind === 'loading'}
-                        onclick={(e) => { e.stopPropagation(); submitBingFor({ accountId: s.accountId, siteUrl: s.siteUrl }); }}
-                      >{bSt?.kind === 'loading' ? '…' : 'Bing'}</button>
-                      {#if bSt?.kind === 'done'}
-                        <span class="text-[11px] text-up" aria-label="ok"><svg viewBox="0 0 12 12" class="inline-block h-3 w-3 align-[-2px]" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 6.5 5 9l4.5-6"/></svg></span>
-                      {:else if bSt?.kind === 'error'}
-                        <span class="text-[11px] text-dn" title={bSt.msg} aria-label="failed"><svg viewBox="0 0 12 12" class="inline-block h-3 w-3 align-[-2px]" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6"/></svg></span>
-                      {/if}
-                      <button
-                        type="button"
-                        class="btn btn-ghost btn-sm"
-                        title="Push sitemap URLs to IndexNow (Bing)"
-                        disabled={iSt?.kind === 'loading'}
-                        onclick={(e) => { e.stopPropagation(); indexNowFor({ accountId: s.accountId, siteUrl: s.siteUrl }); }}
-                      >{iSt?.kind === 'loading' ? '…' : 'IndexNow'}</button>
-                      {#if iSt?.kind === 'done'}
-                        <span class="text-[11px] text-up" title={iSt.msg} aria-label="ok"><svg viewBox="0 0 12 12" class="inline-block h-3 w-3 align-[-2px]" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 6.5 5 9l4.5-6"/></svg></span>
-                      {:else if iSt?.kind === 'error'}
-                        <span class="text-[11px] text-dn" title={iSt.msg} aria-label="failed"><svg viewBox="0 0 12 12" class="inline-block h-3 w-3 align-[-2px]" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6"/></svg></span>
-                      {/if}
-                      <button
-                        type="button"
-                        class="btn btn-ghost btn-sm"
-                        title="View and manage sitemaps"
-                        onclick={(e) => { e.stopPropagation(); openSitemapModal({ accountId: s.accountId, siteUrl: s.siteUrl }); }}
-                      >Sitemaps</button>
-                      <span class="app-toolbar-divider hidden md:block" aria-hidden="true"></span>
-                      <span class="hidden items-center gap-0.5 md:flex">
-                      <a
-                        class="btn btn-ghost btn-sm"
-                        href="/properties/export?account={encodeURIComponent(s.accountId)}&site={encodeURIComponent(s.siteUrl)}&days={data.days}&dim=query"
-                      >{@render dlIcon()}query CSV</a>
-                      <a
-                        class="btn btn-ghost btn-sm"
-                        href="/properties/export?account={encodeURIComponent(s.accountId)}&site={encodeURIComponent(s.siteUrl)}&days={data.days}&dim=page"
-                      >{@render dlIcon()}page CSV</a>
-                      </span>
-                      <span class="hidden md:inline-flex">
-                    {#if !isHidden}
-                      <button type="button" class="btn btn-ghost btn-sm" onclick={() => hideSite(s)}>Hide</button>
-                    {:else}
-                      <button type="button" class="btn btn-sec btn-sm" onclick={() => unhideSite(s)}>Unhide</button>
+                  <!-- Кнопки отправки sitemap / Bing / IndexNow / CSV убраны по просьбе пользователя;
+                       осталась только «Unhide» для уже скрытых сайтов. -->
+                  <td class="w-0 p-0 print:hidden" onclick={(e) => e.stopPropagation()}>
+                    {#if isHidden}
+                      <button type="button" class="btn btn-sec btn-sm m-1" onclick={() => unhideSite(s)}>Unhide</button>
                     {/if}
-                      </span>
-                    </div>
                   </td>
                 </tr>
                 {#if expanded}
