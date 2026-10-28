@@ -77,16 +77,17 @@
           </span>
         {/each}
         {#if mine}
-          <span class="flex items-center gap-0.5 font-normal text-ink-2">
-            в этой группе:
+          <span class="flex items-center gap-0.5 rounded bg-acc-t px-1 font-normal text-ink-2" title="Уже в ТЗ этой группы">
+            ✓ в этой группе:
             {#if editable && onqty}
               <input type="number" min="1" max="1000" value={mine.qty} class="input h-6 w-12 px-1 text-right text-[11px]" aria-label="Ссылок для {r.host}" onchange={(e) => onqty(mine, clamp(Number(e.currentTarget.value)))} />шт
             {:else}<b>{mine.qty} шт</b>{/if}
             {#if editable && onremove && mine.itemId}<button type="button" class="rounded px-1 text-ink-3 hover:bg-bad/10 hover:text-bad" title="Убрать у {r.host} из этой группы" onclick={() => onremove(mine)}>×</button>{/if}
           </span>
         {:else if editable && onadd && r.owner?.page && r.owner.siteUrl}
-          <span class="flex items-center gap-0.5 font-normal">
-            <input type="number" min="1" max="1000" value={draft(r.host)} class="input h-6 w-12 px-1 text-right text-[11px]" aria-label="Сколько ссылок для {r.host}" onchange={(e) => (drafts = { ...drafts, [r.host]: clamp(Number(e.currentTarget.value)) })} />шт
+          <span class="flex items-center gap-0.5 font-normal text-ink-3" title="Ещё не добавлено. Укажите, сколько ссылок, и нажмите + — ключ добавится для {r.host} в эту группу">
+            добавить
+            <input type="number" min="1" max="1000" value={draft(r.host)} class="input h-6 w-12 border-dashed px-1 text-right text-[11px] {r.host in drafts ? 'text-ink' : 'text-ink-4'}" aria-label="Сколько ссылок для {r.host}" onchange={(e) => (drafts = { ...drafts, [r.host]: clamp(Number(e.currentTarget.value)) })} />шт
             <button type="button" class="btn btn-sec h-6 px-1.5 text-[11px]" title="Добавить этот ключ для {r.host} в эту группу ({r.owner.page})" onclick={() => onadd(r.owner!, query, draft(r.host))}>+</button>
           </span>
         {/if}
