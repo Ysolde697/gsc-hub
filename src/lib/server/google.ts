@@ -1456,3 +1456,75 @@ export async function fetchQueryOwners(db: Db, days = 28): Promise<Map<string, Q
     return out;
   }, 60 * 60 * 1000);
 }
+
+// ─── Поиск ключа по всем сайтам ────────────────────────────────────────────────
+// Страница «Поиск ключа»: на каких ваших сайтах и страницах есть ключ и на каком
+// месте. Фильтр по ключу считает сам Google (contains / equals), поэтому запрос
+// лёгкий: по одному вызову на сайт, ответы кэшируются как обычно.
+
+export interface KeywordHit {
+  query: string;
+  page: string;
+  siteUrl: string;
+  host: string;
+  accountId: string;
+  accountEmail: string;
+  position: number;
+  impressions: number;
+  clicks: number;
+  ctr: number;
+}
+
+export async function searchKeywordAcrossSites(
+  db: Db,
+  q: string,
+  mode: 'contains' | 'equals' = 'contains',
+  days = 28
+): Promise<{ hits: KeywordHit[]; sites: number; errors: number }> {
+  const accounts = listAccounts(db).filter((a) => a.status === 'active');
+  const perAccount = await Promise.allSettled(accounts.map((a) => listSitesForAccount(db, a)));
+  const pairs: { acc: AccountRow; site: SiteRow }[] = [];
+  perAccount.forEach((r, i) => {
+    if (r.status === 'fulfilled') r.value.forEach((site) => pairs.push({ acc: accounts[i], site }));
+  });
+  const { startDate, endDate } = gscDateRange(days);
+  const perSite = await mapSettledLimit(pairs, ({ acc, site }) =>
+    searchAnalyticsQuery(db, acc, site.siteUrl, {
+      startDate,
+      endDate,
+      dimensions: ['query', 'page'],
+      rowLimit: 1000,
+      dimensionFilterGroups: [{ filters: [{ dimension: 'query', operator: mode, expression: q }] }]
+    })
+  );
+  // Один домен может быть в двух property (sc-domain: и https://): берём строку с бо́льшими показами.
+  const best = new Map<string, KeywordHit>();
+  let errors = 0;
+  perSite.forEach((r, i) => {
+    if (r.status !== 'fulfilled') {
+      errors++;
+      return;
+    }
+    const { acc, site } = pairs[i];
+    const host = hostKey(site.siteUrl);
+    for (const row of r.value) {
+      const hit: KeywordHit = {
+        query: row.keys[0] ?? '',
+        page: row.keys[1] ?? '',
+        siteUrl: site.siteUrl,
+        host,
+        accountId: acc.id,
+        accountEmail: acc.email,
+        position: row.position,
+        impressions: row.impressions,
+        clicks: row.clicks,
+        ctr: row.ctr
+      };
+      const k = `${host}\n${hit.query}\n${hit.page}`;
+      const cur = best.get(k);
+      if (!cur || hit.impressions > cur.impressions) best.set(k, hit);
+    }
+  });
+  const hits = [...best.values()].sort((a, b) => a.position - b.position || b.impressions - a.impressions);
+  return { hits, sites: pairs.length, errors };
+}
