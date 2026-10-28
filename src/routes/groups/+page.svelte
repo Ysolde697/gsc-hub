@@ -1,6 +1,8 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
   import { siteHostname } from '$lib/utils/url-filters';
+  import OtherSitesInline from '$lib/components/OtherSitesInline.svelte';
+  import type { OtherOwner, OtherLink } from '$lib/group-items.svelte';
   import { goto } from '$app/navigation';
   import type { PageData, ActionData } from './$types';
   let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -64,6 +66,32 @@
     return k ? `/groups/open?g=${group?.id}&site=${encodeURIComponent(k.open.siteUrl)}&acc=${encodeURIComponent(k.open.accountId)}` : null;
   };
   let editorOpen = $state(false);
+
+  // «Другие сайты» в ТЗ: сначала быстро — ссылки из групп, затем позиции из Google.
+  let others = $state<Record<string, { owners: OtherOwner[]; links: OtherLink[] }>>({});
+  let othersLoading = $state(false);
+  let othersKey = '';
+  $effect(() => {
+    const pairs = data.items.filter((i) => i.kind === 'anchor').map((i) => ({ site: i.siteUrl, query: i.query }));
+    const key = JSON.stringify(pairs);
+    if (key === othersKey) return;
+    othersKey = key;
+    if (!pairs.length) {
+      others = {};
+      return;
+    }
+    const ask = (linksOnly: boolean) =>
+      fetch('/groups/competition' + (linksOnly ? '?links=1' : ''), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ pairs })
+      }).then((r) => (r.ok ? r.json() : null));
+    othersLoading = true;
+    ask(true)
+      .then((d) => { if (d && key === othersKey) others = d.byPair; return ask(false); })
+      .then((d) => { if (d && key === othersKey) others = d.byPair; })
+      .finally(() => { if (key === othersKey) othersLoading = false; });
+  });
 
   // Выбрать группу фильтром в шапке.
   async function chooseInHeader(id: number | null) {
@@ -310,7 +338,7 @@
           {:else}
             <div class="overflow-x-auto rounded border border-line">
               <table class="app-table">
-                <thead><tr><th>Сайт</th><th>Тип</th><th>Анкор</th><th>Страница</th><th class="num">Ссылок</th><th class="num">Pos</th><th class="num">Impr</th><th class="num">Clicks</th><th></th></tr></thead>
+                <thead><tr><th>Сайт</th><th>Тип</th><th>Анкор</th><th>Страница</th><th class="num">Ссылок</th><th class="num">Pos</th><th class="num">Impr</th><th class="num">Clicks</th><th title="Сколько ссылок на этот ключ взято для других ваших сайтов; ⚠ — другой сайт стоит выше">Другие сайты</th><th></th></tr></thead>
                 <tbody>
                   {#each data.items as it (it.id)}
                     <tr>
@@ -332,6 +360,12 @@
                       <td class="num app-num">{it.position === null ? '—' : it.position.toFixed(1)}</td>
                       <td class="num app-num">{fmt(it.impressions)}</td>
                       <td class="num app-num">{fmt(it.clicks)}</td>
+                      <td>
+                        {#if it.kind === 'anchor'}
+                          {@const o = others[`${it.siteUrl}\n${it.query}`]}
+                          <OtherSitesInline owners={o?.owners ?? []} links={o?.links ?? []} position={it.position} loading={othersLoading} />
+                        {/if}
+                      </td>
                       <td class="text-right">
                         {#if !group.fixedAt}
                           <form method="POST" action="?/removeItem" use:enhance>

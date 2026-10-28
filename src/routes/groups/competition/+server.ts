@@ -13,7 +13,24 @@ import { foldQuery, hostKey } from '$lib/utils/fold-query';
  */
 export const POST: RequestHandler = async ({ request, url, locals }) => {
   requireAdmin(locals);
-  const body = (await request.json().catch(() => null)) as { site?: unknown; queries?: unknown } | null;
+  const body = (await request.json().catch(() => null)) as { site?: unknown; queries?: unknown; pairs?: unknown } | null;
+  // Вариант для страницы группы: { pairs: [{ site, query }] } — у каждого ключа свой сайт.
+  if (body && Array.isArray(body.pairs)) {
+    const pairs = body.pairs
+      .filter((x): x is { site: string; query: string } => !!x && typeof x.site === 'string' && typeof x.query === 'string')
+      .slice(0, 5000);
+    const links = linksByQuery(db());
+    const owners = url.searchParams.get('links') === '1' ? null : await fetchQueryOwners(db());
+    const out: Record<string, { owners: unknown[]; links: unknown[] }> = {};
+    for (const p of pairs) {
+      const me = hostKey(p.site);
+      const k = foldQuery(p.query);
+      const o = (owners?.get(k) ?? []).filter((x) => x.host !== me);
+      const l = (links.get(k) ?? []).filter((x) => x.host !== me);
+      if (o.length || l.length) out[`${p.site}\n${p.query}`] = { owners: o, links: l };
+    }
+    return json({ byPair: out, ownersLoaded: owners !== null });
+  }
   if (!body || typeof body.site !== 'string' || !Array.isArray(body.queries)) throw error(400, 'нужно { site, queries }');
   const me = hostKey(body.site);
   const queries = body.queries.filter((q): q is string => typeof q === 'string').slice(0, 5000);
