@@ -11,7 +11,10 @@ import {
   listGroupItems,
   setGroupFixed,
   itemMarks,
-  groupItemsCsv
+  groupItemsCsv,
+  setItemQty,
+  addNakedItem,
+  siteHistory
 } from '../src/lib/server/group-items';
 
 const item = (q: string, page = 'https://a.com/p/', site = 'sc-domain:a.com') => ({
@@ -95,7 +98,45 @@ describe('ключи группы (закупка)', () => {
     const csv = groupItemsCsv('28-10-26', listGroupItems(db, g));
     expect(csv.startsWith('﻿')).toBe(true);
     const [head, row] = csv.slice(1).split('\r\n');
-    expect(head).toBe('Группа;Сайт;Ключ;Страница;Позиция;Показы;Клики;CTR %');
-    expect(row).toBe('28-10-26;sc-domain:a.com;"\'=HYPERLINK(""x"")";https://a.com/p/;7,3;23;1;4,3');
+    expect(head).toBe('Группа;Сайт;Тип;Анкор;Страница;Кол-во ссылок;Позиция;Показы;Клики;CTR %');
+    expect(row).toBe('28-10-26;sc-domain:a.com;Анкор;"\'=HYPERLINK(""x"")";https://a.com/p/;1;7,3;23;1;4,3');
+  });
+
+  it('количество ссылок: по умолчанию 1, меняется, ограничено 1..1000', () => {
+    const g = createSiteGroup(db, 'A');
+    addGroupItem(db, g, { ...item('k1'), qty: 3 });
+    addGroupItem(db, g, item('k2'));
+    expect(listGroupItems(db, g).map((i) => [i.query, i.qty])).toEqual([['k1', 3], ['k2', 1]]);
+    setItemQty(db, g, 'https://a.com/p/', 'k2', 5);
+    setItemQty(db, g, 'https://a.com/p/', 'k1', 0);
+    expect(listGroupItems(db, g).map((i) => i.qty)).toEqual([1, 5]);
+    setItemQty(db, g, 'https://a.com/p/', 'k1', 99999);
+    expect(listGroupItems(db, g)[0].qty).toBe(1000);
+    expect(itemMarks(db)['https://a.com/p/\nk2'][0].qty).toBe(5);
+  });
+
+  it('безанкорные: повтор той же страницы прибавляет, нужен полный адрес', () => {
+    const g = createSiteGroup(db, 'A');
+    addNakedItem(db, g, 'sc-domain:a.com', 'https://a.com/', 2);
+    addNakedItem(db, g, 'sc-domain:a.com', 'https://a.com/', 3);
+    expect(() => addNakedItem(db, g, 'sc-domain:a.com', 'a.com', 1)).toThrow(/https/);
+    const [n] = listGroupItems(db, g);
+    expect(n).toMatchObject({ kind: 'naked', query: '', page: 'https://a.com/', qty: 5 });
+    // Безанкорные не помечают ключи в Striking.
+    expect(itemMarks(db)).toEqual({});
+    const csv = groupItemsCsv('A', listGroupItems(db, g)).slice(1).split('\r\n')[1];
+    expect(csv).toBe('A;sc-domain:a.com;Безанкор;;https://a.com/;5;;;;');
+  });
+
+  it('история сайта: все группы, новые сверху, только этот сайт', () => {
+    const a = createSiteGroup(db, '01-10-26');
+    addGroupItem(db, a, item('k1'));
+    const b = createSiteGroup(db, '28-10-26');
+    addNakedItem(db, b, 'sc-domain:a.com', 'https://a.com/', 2);
+    addGroupItem(db, b, item('k9', 'https://b.com/', 'https://b.com/'));
+    setGroupFixed(db, a, true);
+    const h = siteHistory(db, 'sc-domain:a.com');
+    expect(h.map((x) => [x.groupName, x.kind, x.qty])).toEqual([['28-10-26', 'naked', 2], ['01-10-26', 'anchor', 1]]);
+    expect(h[1].fixedAt).toBeTypeOf('number');
   });
 });

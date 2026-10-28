@@ -12,7 +12,7 @@ import {
   getSiteGroup,
   normalizeHost
 } from '$lib/server/site-groups';
-import { addGroupItem, removeGroupItem, itemMarks, todayGroupName, type NewItem } from '$lib/server/group-items';
+import { addGroupItem, removeGroupItem, itemMarks, todayGroupName, setItemQty, addNakedItem, siteHistory, type NewItem } from '$lib/server/group-items';
 
 const summaries = () =>
   listSiteGroups(db()).map((g) => ({
@@ -29,7 +29,13 @@ const summaries = () =>
 export const GET: RequestHandler = async ({ url, locals }) => {
   requireAdmin(locals);
   const site = url.searchParams.get('site') || undefined;
-  return json({ groups: summaries(), marks: itemMarks(db(), site), today: todayGroupName() });
+  return json({
+    groups: summaries(),
+    marks: itemMarks(db(), site),
+    today: todayGroupName(),
+    // История ссылок по сайту: что и когда отбиралось во всех группах.
+    history: site ? siteHistory(db(), site) : []
+  });
 };
 
 /**
@@ -38,6 +44,8 @@ export const GET: RequestHandler = async ({ url, locals }) => {
  *   { action: 'done',   groupId, host, done }         — сайт пройден / не пройден
  *   { action: 'today',  site }                        — новая группа на сегодня с этим сайтом, выбрать её
  *   { action: 'host',   groupId, site, on }           — добавить сайт в группу / убрать (страница Sites)
+ *   { action: 'qty',    groupId, page, query, qty }   — сколько ссылок на связку
+ *   { action: 'naked',  groupId, site, page, qty }    — безанкорные ссылки на страницу
  *   { action: 'create', name? }                       — новая группа (по умолчанию сегодняшняя дата)
  */
 export const POST: RequestHandler = async ({ request, locals }) => {
@@ -65,6 +73,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     if (!Number.isInteger(groupId) || groupId < 1) throw new Error('Не выбрана группа');
     if (body.action === 'add') addGroupItem(db(), groupId, (body.item ?? {}) as NewItem);
     else if (body.action === 'remove') removeGroupItem(db(), groupId, String(body.page ?? ''), String(body.query ?? ''));
+    else if (body.action === 'qty') setItemQty(db(), groupId, String(body.page ?? ''), String(body.query ?? ''), Number(body.qty));
+    else if (body.action === 'naked') addNakedItem(db(), groupId, String(body.site ?? ''), String(body.page ?? ''), Number(body.qty));
     else if (body.action === 'host') {
       const g = getSiteGroup(db(), groupId);
       const host = normalizeHost(String(body.site ?? ''));

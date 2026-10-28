@@ -54,7 +54,7 @@
       try {
         h = new URL(it.page).hostname.replace(/^www\./, '');
       } catch {}
-      m.set(h, (m.get(h) ?? 0) + 1);
+      m.set(h, (m.get(h) ?? 0) + it.qty);
     }
     return m;
   });
@@ -183,7 +183,7 @@
           {/if}
           <span class="text-ink-3">Пройдено {group.done.length} из {group.hosts.length} · ключей {group.items}</span>
           <span class="ml-auto flex items-center gap-1">
-            <a class="btn btn-sec btn-sm" href="/groups/{group.id}/csv">Скачать ключи (CSV)</a>
+            <a class="btn btn-sec btn-sm" href="/groups/{group.id}/csv">Скачать ТЗ (CSV)</a>
             {#if group.fixedAt}
               <span class="badge badge-ok">зафиксирована {new Date(group.fixedAt).toLocaleDateString('ru-RU')}</span>
               <form method="POST" action="?/unfix" use:enhance><input type="hidden" name="id" value={group.id} /><button class="btn btn-ghost btn-sm">Открыть для правок</button></form>
@@ -197,7 +197,7 @@
           <div class="border-b border-line">
             <div class="px-3 pt-3 text-xs font-semibold uppercase tracking-wide text-ink-3">Сайты группы</div>
             <table class="app-table">
-              <thead><tr><th class="w-px">Пройден</th><th>Сайт</th><th>Консоль</th><th class="num">Ключей</th><th></th></tr></thead>
+              <thead><tr><th class="w-px">Пройден</th><th>Сайт</th><th>Консоль</th><th class="num">Ссылок</th><th>Безанкорные</th><th></th></tr></thead>
               <tbody>
                 {#each group.hosts as h (h)}
                   {@const isDone = group.done.includes(h)}
@@ -213,6 +213,17 @@
                     <td class="pii font-medium text-ink {isDone ? 'line-through' : ''}">{h}</td>
                     <td class="pii text-xs text-ink-3">{knownByHost.get(h)?.accounts.join(', ') || 'нет ни в одной консоли'}</td>
                     <td class="num app-num">{itemsByHost.get(h) ?? 0}</td>
+                    <td>
+                      {#if !group.fixedAt}
+                        <form method="POST" action="?/naked" use:enhance={() => async ({ update }) => update({ reset: false })} class="flex items-center gap-1">
+                          <input type="hidden" name="id" value={group.id} />
+                          <input type="hidden" name="site" value={knownByHost.get(h)?.open.siteUrl ?? `https://${h}/`} />
+                          <input name="page" value={`https://${h}/`} class="input h-7 w-56 text-xs" aria-label="Страница для безанкорных ссылок" required />
+                          <input name="qty" type="number" min="1" max="1000" value="1" class="input h-7 w-14 px-1 text-right text-xs" aria-label="Сколько ссылок" />
+                          <button class="btn btn-sec btn-sm" title="Добавить безанкорные ссылки на эту страницу">+ безанкор</button>
+                        </form>
+                      {/if}
+                    </td>
                     <td class="text-right">
                       {#if openHref(h)}
                         <a class="btn btn-pri btn-sm" href={openHref(h)}>Открыть → Striking</a>
@@ -278,19 +289,31 @@
         </details>
 
         <div class="p-3">
-          <div class="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-3">Отобранные ключи · {data.items.length}</div>
+          <div class="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-3">ТЗ на ссылки · {data.items.length} строк · {data.items.reduce((a, i) => a + i.qty, 0)} ссылок</div>
           {#if data.items.length === 0}
             <p class="text-xs text-ink-3">Пока нет. Откройте сайт из списка выше и в Striking Distance нажимайте <b>+</b> у нужных ключей.</p>
           {:else}
             <div class="overflow-x-auto rounded border border-line">
               <table class="app-table">
-                <thead><tr><th>Сайт</th><th>Ключ</th><th>Страница</th><th class="num">Pos</th><th class="num">Impr</th><th class="num">Clicks</th><th></th></tr></thead>
+                <thead><tr><th>Сайт</th><th>Тип</th><th>Анкор</th><th>Страница</th><th class="num">Ссылок</th><th class="num">Pos</th><th class="num">Impr</th><th class="num">Clicks</th><th></th></tr></thead>
                 <tbody>
                   {#each data.items as it (it.id)}
                     <tr>
                       <td class="whitespace-nowrap text-ink-2"><span class="pii">{siteHostname(it.siteUrl)}</span></td>
-                      <td class="font-medium"><span class="pii">{it.query}</span></td>
+                      <td class="text-xs text-ink-3">{it.kind === 'naked' ? 'Безанкор' : 'Анкор'}</td>
+                      <td class="font-medium"><span class="pii">{it.kind === 'naked' ? '—' : it.query}</span></td>
                       <td class="max-w-md"><a class="pii break-all text-ink-3 hover:text-acc hover:underline" href={it.page} target="_blank" rel="noopener noreferrer">{it.page}</a></td>
+                      <td class="num">
+                        {#if group.fixedAt}
+                          <span class="app-num">{it.qty}</span>
+                        {:else}
+                          <form method="POST" action="?/qty" use:enhance={() => async ({ update }) => update({ reset: false })}>
+                            <input type="hidden" name="id" value={group.id} />
+                            <input type="hidden" name="item" value={it.id} />
+                            <input name="qty" type="number" min="1" max="1000" value={it.qty} class="input h-7 w-16 px-1 text-right text-xs" aria-label="Сколько ссылок" onchange={(e) => e.currentTarget.form?.requestSubmit()} />
+                          </form>
+                        {/if}
+                      </td>
                       <td class="num app-num">{it.position === null ? '—' : it.position.toFixed(1)}</td>
                       <td class="num app-num">{fmt(it.impressions)}</td>
                       <td class="num app-num">{fmt(it.clicks)}</td>

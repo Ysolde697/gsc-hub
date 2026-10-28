@@ -271,6 +271,10 @@ export function openDb(path: string): Db {
   if (!groupCols.some((c) => c.name === 'fixed_at')) db.exec('ALTER TABLE site_groups ADD COLUMN fixed_at INTEGER');
   const hostCols = db.prepare("PRAGMA table_info('site_group_hosts')").all() as Array<{ name: string }>;
   if (!hostCols.some((c) => c.name === 'done_at')) db.exec('ALTER TABLE site_group_hosts ADD COLUMN done_at INTEGER');
+  // Ключ группы: сколько ссылок ставить (qty) и тип: анкорная (anchor) или безанкорная (naked).
+  const itemCols = db.prepare("PRAGMA table_info('site_group_items')").all() as Array<{ name: string }>;
+  if (!itemCols.some((c) => c.name === 'qty')) db.exec('ALTER TABLE site_group_items ADD COLUMN qty INTEGER NOT NULL DEFAULT 1');
+  if (!itemCols.some((c) => c.name === 'kind')) db.exec("ALTER TABLE site_group_items ADD COLUMN kind TEXT NOT NULL DEFAULT 'anchor'");
 
   // Галочка «Использовать»: снятая консоль не попадает в общие отчёты и в MCP.
   // По умолчанию 1, чтобы уже подключённые консоли работали как раньше.

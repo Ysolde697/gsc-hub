@@ -14,7 +14,7 @@ import {
   parseHostList,
   setHostDone
 } from '$lib/server/site-groups';
-import { listGroupItems, setGroupFixed, removeGroupItemById, todayGroupName } from '$lib/server/group-items';
+import { listGroupItems, setGroupFixed, removeGroupItemById, todayGroupName, addNakedItem, setItemQtyById } from '$lib/server/group-items';
 import { siteHostname } from '$lib/utils/url-filters';
 
 export const load: PageServerLoad = async ({ locals, url }) => {
@@ -76,6 +76,28 @@ export const actions: Actions = {
     if (!id) return fail(400, { error: 'Нет группы' });
     try {
       setHostDone(db(), id, String(form.get('host') ?? ''), form.get('done') === '1');
+    } catch (e) {
+      return fail(400, { error: (e as Error).message });
+    }
+  },
+  naked: async ({ request, locals }) => {
+    requireAdmin(locals);
+    const form = await request.formData();
+    const id = groupId(form);
+    if (!id) return fail(400, { error: 'Нет группы' });
+    try {
+      addNakedItem(db(), id, String(form.get('site') ?? ''), String(form.get('page') ?? ''), Number(form.get('qty')));
+    } catch (e) {
+      return fail(400, { error: (e as Error).message });
+    }
+  },
+  qty: async ({ request, locals }) => {
+    requireAdmin(locals);
+    const form = await request.formData();
+    const id = groupId(form);
+    if (!id) return fail(400, { error: 'Нет группы' });
+    try {
+      setItemQtyById(db(), id, Number(form.get('item')), Number(form.get('qty')));
     } catch (e) {
       return fail(400, { error: (e as Error).message });
     }

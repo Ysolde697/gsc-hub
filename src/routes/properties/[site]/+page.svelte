@@ -10,6 +10,8 @@
   import SortCaret from '$lib/components/SortCaret.svelte';
   import GroupBar from '$lib/components/GroupBar.svelte';
   import GroupCell from '$lib/components/GroupCell.svelte';
+  import LastPlanCell from '$lib/components/LastPlanCell.svelte';
+  import SiteLinkHistory from '$lib/components/SiteLinkHistory.svelte';
   import { loadGroupItems } from '$lib/group-items.svelte';
   import { sortStriking, type StrikingSortKey, type SortDirection } from '$lib/utils/striking-sort';
   import { siteHostname, urlExcluded, urlMatchesMask, type UrlExclusion } from '$lib/utils/url-filters';
@@ -760,6 +762,7 @@
                   </details>
                   {#if exclusionError}<p class="text-err text-xs" role="alert">{exclusionError}</p>{/if}
                   <GroupBar site={data.siteUrl} />
+                  <SiteLinkHistory />
                 </div>
                 {#if strikingRows.length === 0}
                   <p class="loading p-3">Нет запросов с учётом фильтра и исключений.</p>
@@ -776,7 +779,8 @@
                           <th class="sort-th num" aria-sort={sortAria('clicks')}><button type="button" class="hover:text-ink" onclick={() => sortBy('clicks')}>Clicks<SortCaret dir={sortArrow('clicks')} /></button></th>
                           <th class="sort-th num" aria-sort={sortAria('ctr')}><button type="button" class="hover:text-ink" onclick={() => sortBy('ctr')}>CTR<SortCaret dir={sortArrow('ctr')} /></button></th>
                           <th class="sort-th num" aria-sort={sortAria('bought')}><button type="button" class="hover:text-ink" onclick={() => sortBy('bought')}>Куплено<SortCaret dir={sortArrow('bought')} /></button></th>
-                          <th class="num" title="Клик — добавить связку «ключ + страница» в выбранную группу">В группу</th>
+                          <th title="Когда на этот ключ в последний раз брали ссылки: группа, сколько, как давно">Последняя закупка</th>
+                      <th class="num" title="Клик — добавить связку «ключ + страница» в выбранную группу">В группу</th>
                           <th class="num w-20"></th></tr>
                       </thead>
                       <tbody>
@@ -805,6 +809,7 @@
                                 <span class="text-ink-4">—</span>
                               {/if}
                             </td>
+                            <td><LastPlanCell page={r.page} query={r.query} /></td>
                             <td class="num"><GroupCell row={{ siteUrl: data.siteUrl, query: r.query, page: r.page, position: r.position, impressions: r.impressions, clicks: r.clicks, ctr: r.ctr }} /></td>
                             <td class="num">
                               {#if data.magicLinksReady}
@@ -815,7 +820,7 @@
                           {#if historyOpen === k && boughtFor(r.page, r.query)}
                             <tr class="bg-sunk">
                               <td></td>
-                              <td colspan="10" class="text-xs">
+                              <td colspan="11" class="text-xs">
                                 {#each boughtFor(r.page, r.query)!.orders as o (o.orderId)}
                                   <a class="mr-4 text-acc hover:underline"
                                     href="/magiclinks/{o.orderId}?url={encodeURIComponent(r.page)}&q={encodeURIComponent(r.query)}">

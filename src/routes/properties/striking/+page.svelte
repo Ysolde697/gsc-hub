@@ -6,6 +6,7 @@
   import BuyLinks from '$lib/components/BuyLinks.svelte';
   import GroupBar from '$lib/components/GroupBar.svelte';
   import GroupCell from '$lib/components/GroupCell.svelte';
+  import LastPlanCell from '$lib/components/LastPlanCell.svelte';
   import { loadGroupItems } from '$lib/group-items.svelte';
   import { onMount } from 'svelte';
   onMount(() => { loadGroupItems(); });
@@ -478,7 +479,8 @@
                   {@render sortTh('clicks', 'Clicks', true)}
                   {@render sortTh('ctr', 'CTR', true)}
                   <th class="num" title="Куплено ссылок MagicLinks на связку «страница + запрос»">Куплено</th>
-                  <th class="num" title="Клик — добавить связку «ключ + страница» в выбранную группу">В группу</th>
+                  <th title="Когда на этот ключ в последний раз брали ссылки: группа, сколько, как давно">Последняя закупка</th>
+                      <th class="num" title="Клик — добавить связку «ключ + страница» в выбранную группу">В группу</th>
                   <th class="num w-20"></th>
                 </tr>
               </thead>
@@ -518,6 +520,7 @@
                         <span class="text-ink-4">—</span>
                       {/if}
                     </td>
+                    <td><LastPlanCell page={r.page} query={r.query} /></td>
                     <td class="num"><GroupCell row={{ siteUrl: r.siteUrl, query: r.query, page: r.page, position: r.position, impressions: r.impressions, clicks: r.clicks, ctr: r.ctr }} /></td>
                     <td class="num">
                       {#if data.magicLinksReady}
@@ -532,7 +535,7 @@
                   {#if historyOpen === pairKey(r) && boughtFor(r)}
                     <tr class="bg-sunk">
                       <td></td>
-                      <td colspan="11" class="text-xs">
+                      <td colspan="12" class="text-xs">
                         {#each boughtFor(r)!.orders as o (o.orderId)}
                           <a
                             class="mr-4 text-acc hover:underline"

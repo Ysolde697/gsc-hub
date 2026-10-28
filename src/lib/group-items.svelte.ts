@@ -10,6 +10,19 @@ export interface GroupSummary {
   hosts: string[];
   done: string[];
 }
+export interface HistoryRow {
+  id: number;
+  groupId: number;
+  groupName: string;
+  fixedAt: number | null;
+  kind: 'anchor' | 'naked';
+  query: string;
+  page: string;
+  qty: number;
+  position: number | null;
+  impressions: number | null;
+  addedAt: number;
+}
 export interface ItemRow {
   siteUrl: string;
   query: string;
@@ -18,11 +31,14 @@ export interface ItemRow {
   impressions?: number;
   clicks?: number;
   ctr?: number;
+  qty?: number;
 }
 
 export const gi = $state({
   groups: [] as GroupSummary[],
-  marks: {} as Record<string, { groupId: number; name: string }[]>,
+  marks: {} as Record<string, { groupId: number; name: string; qty: number; at: number }[]>,
+  /** История ссылок по сайту (страница сайта): все группы, новые сверху. */
+  history: [] as HistoryRow[],
   today: '',
   busy: new Set<string>(),
   error: null as string | null,
@@ -110,13 +126,17 @@ async function post(url: string, body: unknown) {
   return data;
 }
 
+let lastSite: string | undefined;
+
 export async function loadGroupItems(site?: string) {
+  lastSite = site;
   try {
     const res = await fetch('/groups/items' + (site ? `?site=${encodeURIComponent(site)}` : ''));
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     gi.groups = data.groups;
     gi.marks = data.marks;
+    gi.history = data.history ?? [];
     gi.today = data.today;
     gi.error = null;
     pickTarget();
@@ -167,6 +187,38 @@ export const otherGroups = (page: string, query: string) => {
   return (gi.marks[itemKey(page, query)] ?? []).filter((m) => m.groupId !== g?.id);
 };
 
+/** Сколько ссылок стоит у связки в выбранной группе. */
+export const qtyInActive = (page: string, query: string) => {
+  const g = activeGroup();
+  return gi.marks[itemKey(page, query)]?.find((m) => m.groupId === g?.id)?.qty ?? 1;
+};
+
+async function refreshHistory() {
+  try {
+    const res = await fetch('/groups/items?site=' + encodeURIComponent(lastSite!));
+    if (res.ok) gi.history = (await res.json()).history ?? [];
+  } catch {
+    /* история догрузится при следующем открытии */
+  }
+}
+
+export async function setQty(r: ItemRow, qty: number) {
+  const g = activeGroup();
+  if (!g) return;
+  const k = itemKey(r.page, r.query);
+  try {
+    await post('/groups/items', { action: 'qty', groupId: g.id, page: r.page, query: r.query, qty });
+    gi.marks = {
+      ...gi.marks,
+      [k]: (gi.marks[k] ?? []).map((m) => (m.groupId === g.id ? { ...m, qty: Math.max(1, Math.round(qty) || 1) } : m))
+    };
+    gi.error = null;
+    if (lastSite) refreshHistory();
+  } catch (e) {
+    gi.error = (e as Error).message;
+  }
+}
+
 export async function toggleItem(r: ItemRow) {
   const g = activeGroup();
   if (!g) {
@@ -182,9 +234,10 @@ export async function toggleItem(r: ItemRow) {
       ? await post('/groups/items', { action: 'remove', groupId: g.id, page: r.page, query: r.query })
       : await post('/groups/items', { action: 'add', groupId: g.id, item: r });
     const rest = (gi.marks[k] ?? []).filter((m) => m.groupId !== g.id);
-    gi.marks = { ...gi.marks, [k]: had ? rest : [...rest, { groupId: g.id, name: g.name }] };
+    gi.marks = { ...gi.marks, [k]: had ? rest : [...rest, { groupId: g.id, name: g.name, qty: r.qty ?? 1, at: Date.now() }] };
     gi.groups = data.groups;
     gi.error = null;
+    if (lastSite) refreshHistory();
   } catch (e) {
     gi.error = (e as Error).message;
   } finally {
