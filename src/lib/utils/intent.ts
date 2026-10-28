@@ -83,6 +83,39 @@ function domainBrands(page: string): string[] {
   return phrase.replace(/ /g, '').length >= 3 ? [phrase] : [];
 }
 
+// Страны: бренд + страна («1xbet ci», «yajuego colombia») — зелёный, такие ключи продвигаем.
+const GEO = list([
+  "cote d'ivoire", "cote d ivoire", 'cote divoire', 'ivory coast', 'civ', 'abidjan',
+  'colombia', 'chile', 'mexico', 'argentina', 'peru', 'ecuador', 'bolivia', 'paraguay', 'uruguay', 'venezuela',
+  'brasil', 'brazil', 'portugal', 'espana', 'spain',
+  'uzbekistan', 'ozbekiston', "o'zbekiston", 'uzb', 'узбекистан', 'tashkent', 'ташкент',
+  'kazakhstan', 'казахстан', 'kyrgyzstan', 'кыргызстан', 'tajikistan', 'azerbaijan', 'azerbaycan', 'азербайджан',
+  'russia', 'россия', 'рф', 'ukraine', 'украина', 'україна', 'belarus', 'беларусь', 'georgia', 'armenia',
+  'pakistan', 'bangladesh', 'india', 'nepal', 'sri lanka', 'myanmar',
+  'nigeria', 'kenya', 'ghana', 'senegal', 'cameroun', 'cameroon', 'benin', 'togo', 'burkina faso', 'mali', 'guinee', 'guinea',
+  'congo', 'rdc', 'gabon', 'maroc', 'morocco', 'tunisie', 'tunisia', 'algerie', 'algeria', 'egypt', 'egypte',
+  'tanzania', 'uganda', 'zambia', 'zimbabwe', 'malawi', 'mozambique', 'south africa', 'ethiopia', 'somalia',
+  'turkey', 'turkiye', 'philippines', 'indonesia', 'malaysia', 'vietnam', 'thailand', 'cambodia',
+  'cesko', 'ceska', 'ceske', 'czech', 'slovensko', 'slovakia', 'polska', 'poland', 'romania', 'moldova',
+  'canada', 'usa', 'uk', 'australia', 'deutschland', 'germany', 'france', 'italia', 'italy'
+]);
+// Короткие коды стран — только отдельным словом.
+const GEO_CODES = new Set(['ci', 'uz', 'pk', 'bd', 'br', 'co', 'cl', 'mx', 'ar', 'pe', 'ec', 'ng', 'ke', 'gh', 'sn', 'cm', 'tz', 'ug', 'za', 'kz', 'kg', 'az', 'tr', 'ph', 'np', 'cz', 'sk', 'pl', 'ru', 'ua', 'by', 'ma', 'eg', 'bj', 'tg', 'bf', 'ml', 'cd', 'cg', 'ga', 'zm', 'mw', 'et']);
+
+function hasGeo(q: string, page: string): boolean {
+  if (hasPhrase(q, GEO)) return true;
+  const tokens = q.split(' ');
+  if (tokens.some((t) => GEO_CODES.has(t))) return true;
+  // Код страны из домена сайта: для 1xbet-mobile.ci слово «ci» — страна.
+  try {
+    const tld = new URL(page).hostname.split('.').pop() ?? '';
+    if (tld.length === 2 && tokens.includes(tld)) return true;
+  } catch {
+    /* без адреса — только словарь */
+  }
+  return false;
+}
+
 function hasPhrase(q: string, words: string[]): boolean {
   const padded = ` ${q} `;
   return words.some((w) => w && padded.includes(` ${w} `));
@@ -107,18 +140,18 @@ export function classifyIntent(query: string, page = '', brandTerms: string[] = 
   if (!q) return null;
   if (hasPhrase(q, EMPTY)) return null;
   if (hasPhrase(q, CONV)) return 'conv';
-  if (hasPhrase(q, COMMERCIAL)) return 'brand';
-  if (hasPhrase(q, KNOWN_BRANDS)) return 'brand';
   const tokens = q.split(' ');
   const brands = [...slugWords(page), ...domainBrands(page), ...brandTerms.map(foldText).filter((t) => t.length >= 3)];
   // Бренд целиком, фразой или склеенный («yajuego» и «ya juego», «cricket road» и «cricketroad»).
   const glued = tokens.join('');
-  if (
+  const branded =
+    hasPhrase(q, KNOWN_BRANDS) ||
     brands.some((b) => {
       const bg = b.replace(/ /g, '');
       return tokens.includes(b) || hasPhrase(q, [b]) || (bg.length >= 4 && glued.includes(bg));
-    })
-  )
-    return 'brand';
+    });
+  // Бренд + страна — человек ищет, где играть у бренда в своей стране: зелёный.
+  if (branded && hasGeo(q, page)) return 'conv';
+  if (branded || hasPhrase(q, COMMERCIAL)) return 'brand';
   return null;
 }

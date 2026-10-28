@@ -18,26 +18,37 @@ describe('classifyIntent', () => {
 
   it('бренд и коммерция — жёлтые', () => {
     expect(classifyIntent('yajuego casino', P)).toBe('brand');
-    expect(classifyIntent('yajuego colombia', P)).toBe('brand');
     expect(classifyIntent('yajuego', P)).toBe('brand');
     expect(classifyIntent('ya juego', P)).toBe('brand');
     expect(classifyIntent('juego aviator', 'https://x.co/aviator/')).toBe('brand');
-    expect(classifyIntent('wingaga česká', 'https://wingagacasino.cz/', ['wingaga'])).toBe('brand');
+    expect(classifyIntent('wingaga', 'https://wingagacasino.cz/', ['wingaga'])).toBe('brand');
   });
 
   it('известные бренды и бренд из домена — жёлтые', () => {
     const CI = 'https://1xbet-mobile.ci/';
     expect(classifyIntent('1xbet', CI)).toBe('brand');
-    expect(classifyIntent('1xbet ci', CI)).toBe('brand');
-    expect(classifyIntent("1xbet cote d'ivoire", CI)).toBe('brand');
-    expect(classifyIntent("1xbet côte d'ivoire", CI)).toBe('brand');
-    expect(classifyIntent('mostbet uz')).toBe('brand');
+    expect(classifyIntent('mostbet')).toBe('brand');
     expect(classifyIntent('cricketroad', 'https://cricket-road.app/')).toBe('brand');
     expect(classifyIntent('cricket road', 'https://cricket-road.app/')).toBe('brand');
     // Действие с брендом — по-прежнему зелёное.
     expect(classifyIntent('1xbet apk', CI)).toBe('conv');
     // Части домена вроде «official» брендом не считаются.
     expect(classifyIntent('official shop hours', CI)).toBeNull();
+  });
+
+  it('бренд + страна — зелёный', () => {
+    const CI = 'https://1xbet-mobile.ci/';
+    expect(classifyIntent('1xbet ci', CI)).toBe('conv');
+    expect(classifyIntent("1xbet cote d'ivoire", CI)).toBe('conv');
+    expect(classifyIntent("1xbet côte d'ivoire", CI)).toBe('conv');
+    expect(classifyIntent('mostbet uz')).toBe('conv');
+    expect(classifyIntent('1xbet узбекистан')).toBe('conv');
+    expect(classifyIntent('yajuego colombia', P)).toBe('conv');
+    expect(classifyIntent('wingaga česká', 'https://wingagacasino.cz/', ['wingaga'])).toBe('conv');
+    // Страна без бренда — не зелёная.
+    expect(classifyIntent('clima colombia')).toBeNull();
+    // Вход остаётся пустым даже с брендом и страной.
+    expect(classifyIntent('1xbet ci login', CI)).toBeNull();
   });
 
   it('вход и инфо — пусто, даже с брендом или бонусом', () => {
