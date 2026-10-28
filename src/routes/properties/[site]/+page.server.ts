@@ -64,7 +64,14 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
     siteUrl,
     accId,
     days,
-    viewSettings: { ...savedView, days },
+    // ?tab=keywords — открыть сразу нужную вкладку (ссылка «Открыть» со страницы группы).
+    viewSettings: {
+      ...savedView,
+      days,
+      ...(['overview', 'keywords', 'cannibal', 'ctr', 'branded', 'decay', 'health'].includes(url.searchParams.get('tab') ?? '')
+        ? { tab: url.searchParams.get('tab')! }
+        : {})
+    },
     account: { email: acc.email, label: acc.label },
     daily,
     dailyError,

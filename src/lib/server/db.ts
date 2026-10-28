@@ -149,6 +149,22 @@ CREATE TABLE IF NOT EXISTS site_group_hosts (
   PRIMARY KEY (group_id, host)
 );
 
+-- Ключи группы: связки «страница + ключ», отмеченные кнопкой + в Striking
+-- Distance, пока группа выбрана в шапке. Группа с датой в названии — закупка.
+CREATE TABLE IF NOT EXISTS site_group_items (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  group_id    INTEGER NOT NULL REFERENCES site_groups(id) ON DELETE CASCADE,
+  site_url    TEXT NOT NULL,
+  query       TEXT NOT NULL,
+  page        TEXT NOT NULL,
+  position    REAL,
+  impressions INTEGER,
+  clicks      INTEGER,
+  ctr         REAL,
+  added_at    INTEGER NOT NULL,
+  UNIQUE (group_id, page, query)
+);
+
 CREATE TABLE IF NOT EXISTS site_dates (
   host       TEXT PRIMARY KEY,
   created_at INTEGER NOT NULL,
@@ -250,6 +266,12 @@ export function openDb(path: string): Db {
   if (!cols.some((c) => c.name === 'owner_id')) {
     db.exec('ALTER TABLE google_accounts ADD COLUMN owner_id TEXT');
   }
+  // Группа зафиксирована (fixed_at) и сайт группы пройден (done_at).
+  const groupCols = db.prepare("PRAGMA table_info('site_groups')").all() as Array<{ name: string }>;
+  if (!groupCols.some((c) => c.name === 'fixed_at')) db.exec('ALTER TABLE site_groups ADD COLUMN fixed_at INTEGER');
+  const hostCols = db.prepare("PRAGMA table_info('site_group_hosts')").all() as Array<{ name: string }>;
+  if (!hostCols.some((c) => c.name === 'done_at')) db.exec('ALTER TABLE site_group_hosts ADD COLUMN done_at INTEGER');
+
   // Галочка «Использовать»: снятая консоль не попадает в общие отчёты и в MCP.
   // По умолчанию 1, чтобы уже подключённые консоли работали как раньше.
   if (!cols.some((c) => c.name === 'in_use')) {

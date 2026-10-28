@@ -9,6 +9,12 @@ export interface SiteGroup {
   name: string;
   active: boolean;
   hosts: string[];
+  /** Сайты группы, отмеченные «Пройден». */
+  done: string[];
+  /** Сколько ключей отобрано в группу в Striking Distance. */
+  items: number;
+  /** Группа зафиксирована: ключи больше не меняются. */
+  fixedAt: number | null;
 }
 
 export const GROUP_NAME_MAX = 60;
@@ -46,19 +52,32 @@ export function parseHostList(text: string): { hosts: string[]; rejected: string
 
 export function listSiteGroups(db: Db): SiteGroup[] {
   const groups = db
-    .prepare('SELECT id, name, active FROM site_groups ORDER BY name COLLATE NOCASE')
-    .all() as { id: number; name: string; active: number }[];
-  const rows = db.prepare('SELECT group_id, host FROM site_group_hosts ORDER BY host').all() as {
+    .prepare(
+      `SELECT g.id, g.name, g.active, g.fixed_at,
+              (SELECT COUNT(*) FROM site_group_items i WHERE i.group_id = g.id) AS items
+         FROM site_groups g ORDER BY g.created_at DESC, g.id DESC`
+    )
+    .all() as { id: number; name: string; active: number; fixed_at: number | null; items: number }[];
+  const rows = db.prepare('SELECT group_id, host, done_at FROM site_group_hosts ORDER BY host').all() as {
     group_id: number;
     host: string;
+    done_at: number | null;
   }[];
-  const byGroup = new Map<number, string[]>();
+  const hosts = new Map<number, string[]>();
+  const done = new Map<number, string[]>();
   for (const r of rows) {
-    const list = byGroup.get(r.group_id) ?? [];
-    list.push(r.host);
-    byGroup.set(r.group_id, list);
+    hosts.set(r.group_id, [...(hosts.get(r.group_id) ?? []), r.host]);
+    if (r.done_at) done.set(r.group_id, [...(done.get(r.group_id) ?? []), r.host]);
   }
-  return groups.map((g) => ({ id: g.id, name: g.name, active: g.active === 1, hosts: byGroup.get(g.id) ?? [] }));
+  return groups.map((g) => ({
+    id: g.id,
+    name: g.name,
+    active: g.active === 1,
+    hosts: hosts.get(g.id) ?? [],
+    done: done.get(g.id) ?? [],
+    items: g.items,
+    fixedAt: g.fixed_at
+  }));
 }
 
 function cleanName(name: string): string {
@@ -99,12 +118,30 @@ export function setSiteGroupHosts(db: Db, id: number, hosts: string[]): void {
   const clean = [...new Set(hosts.map(normalizeHost).filter((h): h is string => !!h))];
   if (clean.length > GROUP_HOSTS_MAX) throw new Error(`В группе больше ${GROUP_HOSTS_MAX} сайтов`);
   const now = Date.now();
-  const del = db.prepare('DELETE FROM site_group_hosts WHERE group_id = ?');
+  const keep = new Set(clean);
+  const existing = db.prepare('SELECT host FROM site_group_hosts WHERE group_id = ?').all(id) as { host: string }[];
+  const del = db.prepare('DELETE FROM site_group_hosts WHERE group_id = ? AND host = ?');
   const ins = db.prepare('INSERT OR IGNORE INTO site_group_hosts (group_id, host, added_at) VALUES (?, ?, ?)');
   db.transaction(() => {
-    del.run(id);
+    // Убираем только снятые: у оставшихся сохраняется отметка «Пройден».
+    for (const e of existing) if (!keep.has(e.host)) del.run(id, e.host);
     for (const h of clean) ins.run(id, h, now);
   })();
+}
+
+/** Отметка «Пройден» у сайта группы. */
+export function setHostDone(db: Db, id: number, host: string, done: boolean): void {
+  const h = normalizeHost(host);
+  if (!h) throw new Error('Не похоже на домен');
+  const info = db
+    .prepare('UPDATE site_group_hosts SET done_at = ? WHERE group_id = ? AND host = ?')
+    .run(done ? Date.now() : null, id, h);
+  if (info.changes === 0) throw new Error('Этого сайта нет в группе');
+}
+
+/** Выбранная в шапке группа целиком, или null. */
+export function activeSiteGroup(db: Db): SiteGroup | null {
+  return listSiteGroups(db).find((g) => g.active) ?? null;
 }
 
 export function getSiteGroup(db: Db, id: number): SiteGroup | undefined {

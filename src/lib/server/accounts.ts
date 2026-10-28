@@ -54,10 +54,14 @@ export function listAccounts(db: Db, ownerId?: string): AccountRow[] {
 
 /**
  * Консоли, из которых строятся отчёты: рабочие (status = active) и не выключенные
- * галочкой «Использовать». Страница Accounts по-прежнему показывает все.
+ * галочкой «Использовать» (галочки не действуют, пока выбрана группа).
+ * Страница Accounts по-прежнему показывает все.
  */
 export function listReportAccounts(db: Db): AccountRow[] {
-  return listAccounts(db).filter((a) => a.status === 'active' && a.in_use !== 0);
+  // Пока в шапке выбрана группа сайтов, она главнее галочек консолей:
+  // сайты группы видны, из какой бы консоли они ни были.
+  const groupActive = !!db.prepare('SELECT 1 FROM site_groups WHERE active = 1 LIMIT 1').get();
+  return listAccounts(db).filter((a) => a.status === 'active' && (groupActive || a.in_use !== 0));
 }
 
 /** Включить или выключить одну консоль. */

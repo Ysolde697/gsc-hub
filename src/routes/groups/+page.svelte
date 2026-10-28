@@ -1,15 +1,11 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
-  import { page } from '$app/state';
+  import { siteHostname } from '$lib/utils/url-filters';
   import { goto } from '$app/navigation';
   import type { PageData, ActionData } from './$types';
   let { data, form }: { data: PageData; form: ActionData } = $props();
 
-  const selectedId = $derived.by(() => {
-    const raw = Number(page.url.searchParams.get('g'));
-    if (data.groups.some((g) => g.id === raw)) return raw;
-    return data.groups[0]?.id ?? null;
-  });
+  const selectedId = $derived(data.selectedId);
   const group = $derived(data.groups.find((g) => g.id === selectedId) ?? null);
 
   // Галочки редактора. Сбрасываются при смене группы и после сохранения.
@@ -49,6 +45,32 @@
       (group?.hosts ?? []).some((h) => !picked.has(h))
   );
 
+  const fmt = (n: number | null) => (n === null ? '—' : n.toLocaleString('ru-RU'));
+  const knownByHost = $derived(new Map(data.knownSites.map((s) => [s.host, s])));
+  const itemsByHost = $derived.by(() => {
+    const m = new Map<string, number>();
+    for (const it of data.items) {
+      let h = '';
+      try {
+        h = new URL(it.page).hostname.replace(/^www\./, '');
+      } catch {}
+      m.set(h, (m.get(h) ?? 0) + 1);
+    }
+    return m;
+  });
+  const openHref = (host: string) => {
+    const k = knownByHost.get(host);
+    // Через /groups/open: группа становится выбранной в шапке, потом переход на сайт.
+    return k ? `/groups/open?g=${group?.id}&site=${encodeURIComponent(k.open.siteUrl)}&acc=${encodeURIComponent(k.open.accountId)}` : null;
+  };
+  let editorOpen = $state(false);
+
+  // Выбрать группу фильтром в шапке.
+  async function chooseInHeader(id: number | null) {
+    await fetch('/groups/active', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id }) });
+    location.reload();
+  }
+
   function toggle(host: string) {
     const next = new Set(picked);
     if (next.has(host)) next.delete(host);
@@ -80,8 +102,9 @@
   </header>
 
   <p class="mb-3 max-w-3xl text-sm text-ink-3">
-    Группа — это список доменов, например «Приоритет». Выберите её в шапке («Сайты: …»), и все общие
-    отчёты и Claude через MCP будут видеть только эти сайты. Фильтр работает вместе с выбором консолей.
+    Группа — список сайтов, например «Приоритет» или закупка «{data.today}». Выберите её в шапке («Сайты: …»):
+    все отчёты и Claude будут видеть только её сайты, из любых консолей. Откройте сайт, в Striking Distance
+    добавляйте ключи кнопкой <b>+</b> — они собираются здесь, внизу.
   </p>
 
   {#if form && 'error' in form && form.error}
@@ -105,7 +128,7 @@
             >
               <span class="min-w-0 flex-1 truncate">{g.name}</span>
               {#if g.active}<span class="badge badge-ok" title="Выбрана фильтром в шапке">фильтр</span>{/if}
-              <span class="app-num text-xs text-ink-3">{g.hosts.length}</span>
+              <span class="app-num text-xs text-ink-3" title="сайтов пройдено / всего · ключей">{g.done.length}/{g.hosts.length}{g.items ? ` · ${g.items}` : ''}</span>
             </a>
           </li>
         {:else}
@@ -150,6 +173,60 @@
             <button class="btn btn-danger btn-sm">Удалить группу</button>
           </form>
         </div>
+
+        <div class="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2 text-xs">
+          {#if group.active}
+            <span class="badge badge-ok">выбрана в шапке</span>
+            <button type="button" class="btn btn-ghost btn-sm" onclick={() => chooseInHeader(null)}>Снять фильтр</button>
+          {:else}
+            <button type="button" class="btn btn-sec btn-sm" onclick={() => chooseInHeader(group.id)}>Выбрать в шапке</button>
+          {/if}
+          <span class="text-ink-3">Пройдено {group.done.length} из {group.hosts.length} · ключей {group.items}</span>
+          <span class="ml-auto flex items-center gap-1">
+            <a class="btn btn-sec btn-sm" href="/groups/{group.id}/csv">Скачать ключи (CSV)</a>
+            {#if group.fixedAt}
+              <span class="badge badge-ok">зафиксирована {new Date(group.fixedAt).toLocaleDateString('ru-RU')}</span>
+              <form method="POST" action="?/unfix" use:enhance><input type="hidden" name="id" value={group.id} /><button class="btn btn-ghost btn-sm">Открыть для правок</button></form>
+            {:else}
+              <form method="POST" action="?/fix" use:enhance><input type="hidden" name="id" value={group.id} /><button class="btn btn-pri btn-sm" disabled={group.items === 0}>Зафиксировать</button></form>
+            {/if}
+          </span>
+        </div>
+
+        {#if group.hosts.length}
+          <div class="border-b border-line">
+            <div class="px-3 pt-3 text-xs font-semibold uppercase tracking-wide text-ink-3">Сайты группы</div>
+            <table class="app-table">
+              <thead><tr><th class="w-px">Пройден</th><th>Сайт</th><th>Консоль</th><th class="num">Ключей</th><th></th></tr></thead>
+              <tbody>
+                {#each group.hosts as h (h)}
+                  {@const isDone = group.done.includes(h)}
+                  <tr class={isDone ? 'opacity-60' : ''}>
+                    <td class="text-center">
+                      <form method="POST" action="?/done" use:enhance={() => async ({ update }) => update({ reset: false })}>
+                        <input type="hidden" name="id" value={group.id} />
+                        <input type="hidden" name="host" value={h} />
+                        <input type="hidden" name="done" value={isDone ? '0' : '1'} />
+                        <input type="checkbox" checked={isDone} aria-label="Сайт {h} пройден" onchange={(e) => e.currentTarget.form?.requestSubmit()} />
+                      </form>
+                    </td>
+                    <td class="pii font-medium text-ink {isDone ? 'line-through' : ''}">{h}</td>
+                    <td class="pii text-xs text-ink-3">{knownByHost.get(h)?.accounts.join(', ') || 'нет ни в одной консоли'}</td>
+                    <td class="num app-num">{itemsByHost.get(h) ?? 0}</td>
+                    <td class="text-right">
+                      {#if openHref(h)}
+                        <a class="btn btn-pri btn-sm" href={openHref(h)}>Открыть → Striking</a>
+                      {/if}
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+        {/if}
+
+        <details class="border-b border-line" open={group.hosts.length === 0 || editorOpen} ontoggle={(e) => (editorOpen = e.currentTarget.open)}>
+          <summary class="cursor-pointer px-3 py-2 text-xs font-semibold text-ink-2">{group.hosts.length ? 'Изменить состав сайтов' : 'Добавьте сайты в группу'}</summary>
 
         <form method="POST" action="?/hosts" use:enhance={() => async ({ update }) => { await update({ reset: false }); lastKey = ''; }} class="p-3">
           <input type="hidden" name="id" value={group.id} />
@@ -198,6 +275,41 @@
             <button class="btn btn-pri" disabled={!dirty}>Сохранить состав</button>
           </div>
         </form>
+        </details>
+
+        <div class="p-3">
+          <div class="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-3">Отобранные ключи · {data.items.length}</div>
+          {#if data.items.length === 0}
+            <p class="text-xs text-ink-3">Пока нет. Откройте сайт из списка выше и в Striking Distance нажимайте <b>+</b> у нужных ключей.</p>
+          {:else}
+            <div class="overflow-x-auto rounded border border-line">
+              <table class="app-table">
+                <thead><tr><th>Сайт</th><th>Ключ</th><th>Страница</th><th class="num">Pos</th><th class="num">Impr</th><th class="num">Clicks</th><th></th></tr></thead>
+                <tbody>
+                  {#each data.items as it (it.id)}
+                    <tr>
+                      <td class="whitespace-nowrap text-ink-2"><span class="pii">{siteHostname(it.siteUrl)}</span></td>
+                      <td class="font-medium"><span class="pii">{it.query}</span></td>
+                      <td class="max-w-md"><a class="pii break-all text-ink-3 hover:text-acc hover:underline" href={it.page} target="_blank" rel="noopener noreferrer">{it.page}</a></td>
+                      <td class="num app-num">{it.position === null ? '—' : it.position.toFixed(1)}</td>
+                      <td class="num app-num">{fmt(it.impressions)}</td>
+                      <td class="num app-num">{fmt(it.clicks)}</td>
+                      <td class="text-right">
+                        {#if !group.fixedAt}
+                          <form method="POST" action="?/removeItem" use:enhance>
+                            <input type="hidden" name="id" value={group.id} />
+                            <input type="hidden" name="item" value={it.id} />
+                            <button class="btn btn-ghost btn-sm text-bad" title="Убрать ключ из группы">×</button>
+                          </form>
+                        {/if}
+                      </td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            </div>
+          {/if}
+        </div>
       </section>
     {:else}
       <div class="app-empty">

@@ -11,6 +11,7 @@
     { href: '/dashboard', label: 'Dashboard' },
     { href: '/properties', label: 'Sites' },
     { href: '/properties/striking', label: 'Portfolio', title: 'Портфельная аналитика: striking distance, каннибализация, CTR, branded, decay' },
+    { href: '/groups', label: 'Группы', title: 'Группы сайтов и закупки ссылок' },
     { href: '/events', label: 'Events', title: 'Склейки доменов и покупки ссылок с датами' },
     { href: '/magiclinks', label: 'MagicLinks', title: 'Задания на посты и ссылки: статусы и URL публикаций' },
     { href: '/api', label: 'API', title: 'API-ключи и документация для агентов' },
@@ -166,7 +167,7 @@
       </nav>
     {/if}
     <div class="ml-auto flex shrink-0 items-center gap-1.5">
-      {#if isAdmin}<ConsolePicker consoles={data?.consoles ?? []} /><GroupPicker groups={data?.siteGroups ?? []} />{/if}
+      {#if isAdmin}<ConsolePicker consoles={data?.consoles ?? []} overridden={(data?.siteGroups ?? []).some((g) => g.active)} /><GroupPicker groups={data?.siteGroups ?? []} />{/if}
       <button
         type="button"
         class="btn btn-sm {blur ? 'bg-ink text-white hover:bg-ink-2' : 'btn-ghost'}"

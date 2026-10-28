@@ -61,7 +61,7 @@ describe('группы сайтов', () => {
     expect(() => createSiteGroup(db, 'приоритет')).toThrow(/уже есть/);
     expect(() => createSiteGroup(db, ' ')).toThrow();
     setSiteGroupHosts(db, id, ['https://www.b.com/', 'a.com', 'a.com', 'не домен']);
-    expect(listSiteGroups(db)).toEqual([{ id, name: 'Приоритет', active: false, hosts: ['a.com', 'b.com'] }]);
+    expect(listSiteGroups(db)).toEqual([{ id, name: 'Приоритет', active: false, hosts: ['a.com', 'b.com'], done: [], items: 0, fixedAt: null }]);
     renameSiteGroup(db, id, 'Топ-20');
     expect(listSiteGroups(db)[0].name).toBe('Топ-20');
     setActiveSiteGroup(db, id);
@@ -91,7 +91,7 @@ describe('группы сайтов', () => {
     expect(siteInHosts('не url', hosts)).toBe(false);
   });
 
-  it('отчёты видят только сайты группы и только включённых консолей', async () => {
+  it('отчёты видят только сайты группы; пока группа выбрана, галочки консолей не действуют', async () => {
     const future = Math.floor(Date.now() / 1000) + 3600;
     for (const id of ['g1', 'g2']) {
       upsertAccount(db, { id, email: `${id}@x`, access_token: `t-${id}`, refresh_token: 'r', expires_at: future, scope: 's' });
@@ -111,12 +111,15 @@ describe('группы сайтов', () => {
     const urls = async () => (await listSitesForAllAccounts(db)).sites.map((s) => s.siteUrl).sort();
     expect(await urls()).toEqual(['https://d.com/', 'https://www.a.com/', 'sc-domain:a.com']);
 
+    // Группа главнее консолей: выключенная g2 всё равно отдаёт сайты группы.
     setAccountInUse(db, 'g2', false);
-    expect(await urls()).toEqual(['sc-domain:a.com']);
+    gscCacheInvalidate();
+    expect(await urls()).toEqual(['https://d.com/', 'https://www.a.com/', 'sc-domain:a.com']);
 
     // Страница групп видит всё, без фильтров.
     expect((await listAllKnownSites(db)).sites).toHaveLength(5);
 
+    // Без группы галочки консолей снова работают.
     setActiveSiteGroup(db, null);
     expect(await urls()).toEqual(['https://b.com/', 'https://c.com/', 'sc-domain:a.com']);
   });

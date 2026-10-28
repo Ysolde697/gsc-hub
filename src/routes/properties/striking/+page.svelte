@@ -4,6 +4,11 @@
   import { displaySite, siteHref } from '$lib/utils/site';
   import type { PageData } from './$types';
   import BuyLinks from '$lib/components/BuyLinks.svelte';
+  import GroupBar from '$lib/components/GroupBar.svelte';
+  import GroupCell from '$lib/components/GroupCell.svelte';
+  import { loadGroupItems } from '$lib/group-items.svelte';
+  import { onMount } from 'svelte';
+  onMount(() => { loadGroupItems(); });
 
   let { data }: { data: PageData } = $props();
 
@@ -451,6 +456,8 @@
               {#if selectedCountries.size > 0}<button onclick={() => (selectedCountries = new Set())} class="btn btn-ghost btn-sm">clear</button>{/if}
             </div>
           {/if}
+          <span class="app-toolbar-divider" aria-hidden="true"></span>
+          <GroupBar />
         </div>
         {#if filteredStriking.length === 0}
           <p class="loading p-3">{selectedCountries.size > 0 ? 'No rows for the selected geo.' : 'Nothing at position 4–20 with enough impressions.'}</p>
@@ -471,6 +478,7 @@
                   {@render sortTh('clicks', 'Clicks', true)}
                   {@render sortTh('ctr', 'CTR', true)}
                   <th class="num" title="Куплено ссылок MagicLinks на связку «страница + запрос»">Куплено</th>
+                  <th class="num" title="Клик — добавить связку «ключ + страница» в выбранную группу">В группу</th>
                   <th class="num w-20"></th>
                 </tr>
               </thead>
@@ -491,7 +499,7 @@
                         <svg class="h-3 w-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M6.5 3.5h-3v9h9v-3M9 3.5h3.5V7M12.5 3.5 7 9"/></svg>
                       </a>
                     </td>
-                    <td class="max-w-xs truncate text-ink-3"><span class="pii" title={r.page}>{shortUrl(r.page)}</span></td>
+                    <td class="max-w-md text-ink-3"><a class="pii break-all hover:text-acc hover:underline" href={r.page} target="_blank" rel="noopener noreferrer" title="Открыть страницу">{r.page}</a></td>
                     <td class="font-medium"><span class="pii">{r.query}</span></td>
                     <td class="app-num uppercase text-ink-3">{r.country || '—'}</td>
                     <td class="num app-num">{posf(r.position)}</td>
@@ -510,6 +518,7 @@
                         <span class="text-ink-4">—</span>
                       {/if}
                     </td>
+                    <td class="num"><GroupCell row={{ siteUrl: r.siteUrl, query: r.query, page: r.page, position: r.position, impressions: r.impressions, clicks: r.clicks, ctr: r.ctr }} /></td>
                     <td class="num">
                       {#if data.magicLinksReady}
                         <button
@@ -523,7 +532,7 @@
                   {#if historyOpen === pairKey(r) && boughtFor(r)}
                     <tr class="bg-sunk">
                       <td></td>
-                      <td colspan="10" class="text-xs">
+                      <td colspan="11" class="text-xs">
                         {#each boughtFor(r)!.orders as o (o.orderId)}
                           <a
                             class="mr-4 text-acc hover:underline"

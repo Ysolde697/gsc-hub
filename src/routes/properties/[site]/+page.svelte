@@ -8,6 +8,9 @@
   import IndexingModal from '$lib/components/IndexingModal.svelte';
   let indexingOpen = $state(false);
   import SortCaret from '$lib/components/SortCaret.svelte';
+  import GroupBar from '$lib/components/GroupBar.svelte';
+  import GroupCell from '$lib/components/GroupCell.svelte';
+  import { loadGroupItems } from '$lib/group-items.svelte';
   import { sortStriking, type StrikingSortKey, type SortDirection } from '$lib/utils/striking-sort';
   import { siteHostname, urlExcluded, urlMatchesMask, type UrlExclusion } from '$lib/utils/url-filters';
 
@@ -65,6 +68,8 @@
   };
   const pairKey = (page: string, query: string) => `${page}\n${query}`;
   const siteHost = $derived(siteHostname(data.siteUrl));
+  // Закупки ссылок: пометки по этому сайту для колонки «В закупку».
+  $effect(() => { loadGroupItems(data.siteUrl); });
 
   let purchases = $state<Record<string, PurchaseSummary>>({});
   // Своя копия истории: после покупки обновляем её на месте, а при смене
@@ -754,6 +759,7 @@
                     {/each}
                   </details>
                   {#if exclusionError}<p class="text-err text-xs" role="alert">{exclusionError}</p>{/if}
+                  <GroupBar site={data.siteUrl} />
                 </div>
                 {#if strikingRows.length === 0}
                   <p class="loading p-3">Нет запросов с учётом фильтра и исключений.</p>
@@ -770,6 +776,7 @@
                           <th class="sort-th num" aria-sort={sortAria('clicks')}><button type="button" class="hover:text-ink" onclick={() => sortBy('clicks')}>Clicks<SortCaret dir={sortArrow('clicks')} /></button></th>
                           <th class="sort-th num" aria-sort={sortAria('ctr')}><button type="button" class="hover:text-ink" onclick={() => sortBy('ctr')}>CTR<SortCaret dir={sortArrow('ctr')} /></button></th>
                           <th class="sort-th num" aria-sort={sortAria('bought')}><button type="button" class="hover:text-ink" onclick={() => sortBy('bought')}>Куплено<SortCaret dir={sortArrow('bought')} /></button></th>
+                          <th class="num" title="Клик — добавить связку «ключ + страница» в выбранную группу">В группу</th>
                           <th class="num w-20"></th></tr>
                       </thead>
                       <tbody>
@@ -780,7 +787,7 @@
                               <input type="checkbox" checked={selectedPairs.has(k)} onchange={() => togglePair(r.page, r.query)} aria-label="Выделить строку" />
                             </td>
                             <td class="font-medium"><span class="pii">{r.query}</span></td>
-                            <td class="max-w-xs text-ink-3"><div class="flex items-center gap-1"><span class="pii min-w-0 truncate" title={r.page}>{shortUrl(r.page)}</span><button class="btn btn-ghost btn-sm shrink-0" title="Исключить этот URL для домена" aria-label="Исключить {r.page}" disabled={exclusionBusy} onclick={() => updateExclusions('POST', { pattern: r.page, kind: 'exact' })}>×</button></div></td>
+                            <td class="max-w-md text-ink-3"><div class="flex items-center gap-1"><a class="pii min-w-0 break-all hover:text-acc hover:underline" href={r.page} target="_blank" rel="noopener noreferrer" title="Открыть страницу">{r.page}</a><button class="btn btn-ghost btn-sm shrink-0" title="Исключить этот URL для домена" aria-label="Исключить {r.page}" disabled={exclusionBusy} onclick={() => updateExclusions('POST', { pattern: r.page, kind: 'exact' })}>×</button></div></td>
                             <td class="num app-num">{pos(r.position)}</td>
                             {@render serpCell(r.query)}
                             <td class="num app-num pii">{fmt(r.impressions)}</td>
@@ -798,6 +805,7 @@
                                 <span class="text-ink-4">—</span>
                               {/if}
                             </td>
+                            <td class="num"><GroupCell row={{ siteUrl: data.siteUrl, query: r.query, page: r.page, position: r.position, impressions: r.impressions, clicks: r.clicks, ctr: r.ctr }} /></td>
                             <td class="num">
                               {#if data.magicLinksReady}
                                 <button class="btn btn-sec btn-sm" title="Купить ссылки на эту связку" onclick={() => buyOne(r.page, r.query)}>Купить</button>
@@ -807,7 +815,7 @@
                           {#if historyOpen === k && boughtFor(r.page, r.query)}
                             <tr class="bg-sunk">
                               <td></td>
-                              <td colspan="9" class="text-xs">
+                              <td colspan="10" class="text-xs">
                                 {#each boughtFor(r.page, r.query)!.orders as o (o.orderId)}
                                   <a class="mr-4 text-acc hover:underline"
                                     href="/magiclinks/{o.orderId}?url={encodeURIComponent(r.page)}&q={encodeURIComponent(r.query)}">

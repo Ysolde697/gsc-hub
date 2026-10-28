@@ -11,15 +11,17 @@ import {
   deleteSiteGroup,
   setSiteGroupHosts,
   getSiteGroup,
-  parseHostList
+  parseHostList,
+  setHostDone
 } from '$lib/server/site-groups';
+import { listGroupItems, setGroupFixed, removeGroupItemById, todayGroupName } from '$lib/server/group-items';
 import { siteHostname } from '$lib/utils/url-filters';
 
-export const load: PageServerLoad = async ({ locals }) => {
+export const load: PageServerLoad = async ({ locals, url }) => {
   requireAdmin(locals);
   // Все сайты всех консолей, без фильтров: выбирать в группу можно любой.
   const { sites, errors } = await listAllKnownSites(db());
-  const byHost = new Map<string, { host: string; accounts: string[] }>();
+  const byHost = new Map<string, { host: string; accounts: string[]; open: { siteUrl: string; accountId: string } }>();
   for (const s of sites) {
     let host: string;
     try {
@@ -27,13 +29,20 @@ export const load: PageServerLoad = async ({ locals }) => {
     } catch {
       continue;
     }
-    const row = byHost.get(host) ?? { host, accounts: [] };
+    // Ссылка «Открыть» ведёт на первую найденную property этого домена.
+    const row = byHost.get(host) ?? { host, accounts: [], open: { siteUrl: s.siteUrl, accountId: s.accountId } };
     const who = s.accountLabel || s.accountEmail;
     if (!row.accounts.includes(who)) row.accounts.push(who);
     byHost.set(host, row);
   }
+  const groups = listSiteGroups(db());
+  const wanted = Number(url.searchParams.get('g'));
+  const selected = groups.find((g) => g.id === wanted) ?? groups.find((g) => g.active) ?? groups[0] ?? null;
   return {
-    groups: listSiteGroups(db()),
+    groups,
+    selectedId: selected?.id ?? null,
+    today: todayGroupName(),
+    items: selected ? listGroupItems(db(), selected.id) : [],
     knownSites: [...byHost.values()].sort((a, b) => a.host.localeCompare(b.host)),
     siteErrors: errors.map((e) => ({ account: e.accountEmail, reason: e.reason }))
   };
@@ -50,6 +59,38 @@ function changed() {
 }
 
 export const actions: Actions = {
+  fix: async ({ request, locals }) => {
+    requireAdmin(locals);
+    const id = groupId(await request.formData());
+    if (id) setGroupFixed(db(), id, true);
+  },
+  unfix: async ({ request, locals }) => {
+    requireAdmin(locals);
+    const id = groupId(await request.formData());
+    if (id) setGroupFixed(db(), id, false);
+  },
+  done: async ({ request, locals }) => {
+    requireAdmin(locals);
+    const form = await request.formData();
+    const id = groupId(form);
+    if (!id) return fail(400, { error: 'Нет группы' });
+    try {
+      setHostDone(db(), id, String(form.get('host') ?? ''), form.get('done') === '1');
+    } catch (e) {
+      return fail(400, { error: (e as Error).message });
+    }
+  },
+  removeItem: async ({ request, locals }) => {
+    requireAdmin(locals);
+    const form = await request.formData();
+    const id = groupId(form);
+    if (!id) return fail(400, { error: 'Нет группы' });
+    try {
+      removeGroupItemById(db(), id, Number(form.get('item')));
+    } catch (e) {
+      return fail(400, { error: (e as Error).message });
+    }
+  },
   create: async ({ request, locals }) => {
     requireAdmin(locals);
     const form = await request.formData();

@@ -2,7 +2,7 @@
   // Выбор консолей (Google-аккаунтов) для отчётов. Выбор хранится на сервере,
   // поэтому он одинаков во всех вкладках и действует и на MCP для Claude.
   type Console = { id: string; email: string; label: string | null; status: string; inUse: boolean };
-  let { consoles }: { consoles: Console[] } = $props();
+  let { consoles, overridden = false }: { consoles: Console[]; overridden?: boolean } = $props();
 
   let open = $state(false);
   let saving = $state(false);
@@ -71,8 +71,8 @@
   <div class="relative">
     <button
       type="button"
-      class="btn btn-sm {inUseCount < consoles.length ? 'bg-acc-t text-acc hover:bg-acc-t' : 'btn-ghost'}"
-      title="Какие Google-консоли участвуют в отчётах и в MCP"
+      class="btn btn-sm {overridden ? 'btn-ghost text-ink-4 line-through' : inUseCount < consoles.length ? 'bg-acc-t text-acc hover:bg-acc-t' : 'btn-ghost'}"
+      title={overridden ? 'Не действует, пока выбрана группа сайтов: видны все её сайты из любых консолей' : 'Какие Google-консоли участвуют в отчётах и в MCP'}
       aria-expanded={open}
       onclick={() => (open ? (open = false) : openMenu())}
     >
@@ -82,6 +82,9 @@
     {#if open}
       <button type="button" class="fixed inset-0 z-40 cursor-default" aria-label="Закрыть" onclick={() => (open = false)}></button>
       <div class="absolute right-0 z-50 mt-1 w-[22rem] max-sm:fixed max-sm:inset-x-3 max-sm:top-11 max-sm:mt-0 max-sm:w-auto rounded-md border border-line bg-pane p-2 shadow-lg">
+        {#if overridden}
+          <p class="mb-2 rounded bg-warn-t px-2 py-1 text-xs text-ink-2">Сейчас выбрана группа сайтов — она главнее: видны все её сайты из любых консолей. Галочки ниже заработают, когда снимете группу («Сайты: все»).</p>
+        {/if}
         <div class="mb-2 flex flex-wrap items-center gap-1">
           <button type="button" class="btn btn-sec btn-sm" onclick={() => (draft = new Set(consoles.map((c) => c.id)))}>Все</button>
           <button type="button" class="btn btn-sec btn-sm" onclick={() => (draft = new Set())}>Ни одной</button>
