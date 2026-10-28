@@ -1461,13 +1461,15 @@ export async function fetchQueryOwners(db: Db, days = 28): Promise<Map<string, Q
 }
 
 // ─── Поиск ключа по всем сайтам ────────────────────────────────────────────────
-// Страница «Поиск ключа»: на каких ваших сайтах и страницах есть ключ и на каком
-// месте. Фильтр по ключу считает сам Google (contains / equals), поэтому запрос
-// лёгкий: по одному вызову на сайт, ответы кэшируются как обычно.
+// Страница «Поиск ключа»: на каких ваших сайтах и страницах есть ключ, на каком
+// месте и в какой стране. С ключом фильтр считает Google (contains / equals);
+// без ключа («Все ключи») — топ строк каждого сайта. По одному вызову на сайт,
+// ответы кэшируются. Неподтверждённые property пропускаются (Google отдаёт 403).
 
 export interface KeywordHit {
   query: string;
   page: string;
+  country: string;
   siteUrl: string;
   host: string;
   accountId: string;
@@ -1478,68 +1480,99 @@ export interface KeywordHit {
   ctr: number;
 }
 
+export interface KeywordSearchResult {
+  hits: KeywordHit[];
+  sites: number;
+  errors: number;
+  noAccess: number;
+  errorList: { site: string; reason: string }[];
+}
+
 export async function searchKeywordAcrossSites(
   db: Db,
-  q: string,
+  q: string | null,
   mode: 'contains' | 'equals' = 'contains',
   days = 28
-): Promise<{ hits: KeywordHit[]; sites: number; errors: number; noAccess: number; errorList: { site: string; reason: string }[] }> {
-  const accounts = listAccounts(db).filter((a) => a.status === 'active');
-  const perAccount = await Promise.allSettled(accounts.map((a) => listSitesForAccount(db, a)));
-  const pairs: { acc: AccountRow; site: SiteRow }[] = [];
-  // Неподтверждённые property Google видит, но данных не отдаёт (403) — пропускаем.
-  let noAccess = 0;
-  perAccount.forEach((r, i) => {
-    if (r.status === 'fulfilled')
-      r.value.forEach((site) => {
-        if (site.permissionLevel === 'siteUnverifiedUser') noAccess++;
-        else pairs.push({ acc: accounts[i], site });
-      });
-  });
-  const { startDate, endDate } = gscDateRange(days);
-  const perSite = await mapSettledLimit(pairs, ({ acc, site }) =>
-    searchAnalyticsQuery(db, acc, site.siteUrl, {
-      startDate,
-      endDate,
-      dimensions: ['query', 'page'],
-      rowLimit: 1000,
-      dimensionFilterGroups: [{ filters: [{ dimension: 'query', operator: mode, expression: q }] }]
-    })
-  );
-  // Один домен может быть в двух property (sc-domain: и https://): берём строку с бо́льшими показами.
-  const best = new Map<string, KeywordHit>();
-  let errors = 0;
-  const errorList: { site: string; reason: string }[] = [];
-  perSite.forEach((r, i) => {
-    if (r.status !== 'fulfilled') {
-      if (/searchAnalytics 403/.test(String((r.reason as Error)?.message))) {
-        noAccess++;
+): Promise<KeywordSearchResult> {
+  const run = async (): Promise<KeywordSearchResult> => {
+    const accounts = listAccounts(db).filter((a) => a.status === 'active');
+    const perAccount = await Promise.allSettled(accounts.map((a) => listSitesForAccount(db, a)));
+    const pairs: { acc: AccountRow; site: SiteRow }[] = [];
+    let noAccess = 0;
+    perAccount.forEach((r, i) => {
+      if (r.status === 'fulfilled')
+        r.value.forEach((site) => {
+          if (site.permissionLevel === 'siteUnverifiedUser') noAccess++;
+          else pairs.push({ acc: accounts[i], site });
+        });
+    });
+    const { startDate, endDate } = gscDateRange(days);
+    const perSite = await mapSettledLimit(pairs, ({ acc, site }) =>
+      searchAnalyticsQuery(db, acc, site.siteUrl, {
+        startDate,
+        endDate,
+        dimensions: ['query', 'page', 'country'],
+        rowLimit: q ? 2000 : 1000,
+        ...(q ? { dimensionFilterGroups: [{ filters: [{ dimension: 'query' as const, operator: mode, expression: q }] }] } : {})
+      })
+    );
+    // Один домен может быть в двух property (sc-domain: и https://): берём строку с бо́льшими показами.
+    const best = new Map<string, KeywordHit>();
+    let errors = 0;
+    const errorList: { site: string; reason: string }[] = [];
+    perSite.forEach((r, i) => {
+      if (r.status !== 'fulfilled') {
+        if (/searchAnalytics 403/.test(String((r.reason as Error)?.message))) {
+          noAccess++;
+          return;
+        }
+        errors++;
+        errorList.push({ site: pairs[i].site.siteUrl, reason: String((r.reason as Error)?.message ?? r.reason).slice(0, 160) });
         return;
       }
-      errors++;
-      errorList.push({ site: pairs[i].site.siteUrl, reason: String((r.reason as Error)?.message ?? r.reason).slice(0, 160) });
-      return;
+      const { acc, site } = pairs[i];
+      const host = hostKey(site.siteUrl);
+      for (const row of r.value) {
+        const hit: KeywordHit = {
+          query: row.keys[0] ?? '',
+          page: row.keys[1] ?? '',
+          country: row.keys[2] ?? '',
+          siteUrl: site.siteUrl,
+          host,
+          accountId: acc.id,
+          accountEmail: acc.email,
+          position: row.position,
+          impressions: row.impressions,
+          clicks: row.clicks,
+          ctr: row.ctr
+        };
+        const k = `${host}\n${hit.query}\n${hit.page}\n${hit.country}`;
+        const cur = best.get(k);
+        if (!cur || hit.impressions > cur.impressions) best.set(k, hit);
+      }
+    });
+    return { hits: [...best.values()], sites: pairs.length, errors, noAccess, errorList };
+  };
+  // «Все ключи» собираются долго — держим готовый результат час.
+  return q ? run() : gscCached(`allkw:${days}`, run, 60 * 60 * 1000);
+}
+
+/** Сложить строки разных стран в одну строку «ключ + страница» (если страна не важна). */
+export function mergeCountries(hits: KeywordHit[]): KeywordHit[] {
+  const m = new Map<string, KeywordHit & { _pos: number }>();
+  for (const h of hits) {
+    const k = `${h.host}\n${h.query}\n${h.page}`;
+    const cur = m.get(k);
+    if (!cur) m.set(k, { ...h, country: '', _pos: h.position * h.impressions });
+    else {
+      cur.clicks += h.clicks;
+      cur.impressions += h.impressions;
+      cur._pos += h.position * h.impressions;
     }
-    const { acc, site } = pairs[i];
-    const host = hostKey(site.siteUrl);
-    for (const row of r.value) {
-      const hit: KeywordHit = {
-        query: row.keys[0] ?? '',
-        page: row.keys[1] ?? '',
-        siteUrl: site.siteUrl,
-        host,
-        accountId: acc.id,
-        accountEmail: acc.email,
-        position: row.position,
-        impressions: row.impressions,
-        clicks: row.clicks,
-        ctr: row.ctr
-      };
-      const k = `${host}\n${hit.query}\n${hit.page}`;
-      const cur = best.get(k);
-      if (!cur || hit.impressions > cur.impressions) best.set(k, hit);
-    }
-  });
-  const hits = [...best.values()].sort((a, b) => a.position - b.position || b.impressions - a.impressions);
-  return { hits, sites: pairs.length, errors, noAccess, errorList };
+  }
+  return [...m.values()].map(({ _pos, ...h }) => ({
+    ...h,
+    position: h.impressions ? _pos / h.impressions : h.position,
+    ctr: h.impressions ? h.clicks / h.impressions : 0
+  }));
 }

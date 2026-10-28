@@ -35,14 +35,28 @@ describe('поиск ключа по всем сайтам', () => {
       bodies.push(JSON.parse(String(init?.body)));
       const site = decodeURIComponent(url.split('/sites/')[1].split('/')[0]);
       const rows = site === 'https://b.com/'
-        ? [{ keys: ['cricket road game', 'https://b.com/game/'], clicks: 1, impressions: 50, ctr: 0.02, position: 3 }]
-        : [{ keys: ['cricket road game', 'https://a.com/'], clicks: 0, impressions: site.startsWith('sc-') ? 90 : 40, ctr: 0, position: 8 }];
+        ? [{ keys: ['cricket road game', 'https://b.com/game/', 'ind'], clicks: 1, impressions: 50, ctr: 0.02, position: 3 }]
+        : [{ keys: ['cricket road game', 'https://a.com/', 'ind'], clicks: 0, impressions: site.startsWith('sc-') ? 90 : 40, ctr: 0, position: 8 }];
       return new Response(JSON.stringify({ rows }));
     }));
 
     const res = await searchKeywordAcrossSites(db, 'cricket road');
     expect(res.sites).toBe(3);
-    expect(res.hits.map((h) => [h.host, h.position, h.impressions])).toEqual([['b.com', 3, 50], ['a.com', 8, 90]]);
-    expect(bodies[0]).toMatchObject({ dimensions: ['query', 'page'], dimensionFilterGroups: [{ filters: [{ dimension: 'query', operator: 'contains', expression: 'cricket road' }] }] });
+    expect(res.hits.map((h) => [h.host, h.position, h.impressions, h.country]).sort()).toEqual([['a.com', 8, 90, 'ind'], ['b.com', 3, 50, 'ind']]);
+    expect(bodies[0]).toMatchObject({ dimensions: ['query', 'page', 'country'], dimensionFilterGroups: [{ filters: [{ dimension: 'query', operator: 'contains', expression: 'cricket road' }] }] });
+  });
+});
+
+import { mergeCountries } from '../src/lib/server/google';
+
+describe('mergeCountries', () => {
+  it('складывает страны одной связки, позиция — по показам', () => {
+    const base = { query: 'k', page: 'https://a.com/', siteUrl: 'https://a.com/', host: 'a.com', accountId: 'x', accountEmail: 'x', ctr: 0 };
+    const out = mergeCountries([
+      { ...base, country: 'col', position: 2, impressions: 100, clicks: 10 },
+      { ...base, country: 'mex', position: 6, impressions: 300, clicks: 2 }
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ country: '', impressions: 400, clicks: 12, position: 5, ctr: 0.03 });
   });
 });
