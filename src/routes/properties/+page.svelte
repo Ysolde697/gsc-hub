@@ -9,7 +9,7 @@
   import TrendChart from '$lib/components/TrendChart.svelte';
   import SiteGroupBar from '$lib/components/SiteGroupBar.svelte';
   import SiteGroupCell from '$lib/components/SiteGroupCell.svelte';
-  import { loadGroupItems } from '$lib/group-items.svelte';
+  import { loadGroupItems, siteInTarget } from '$lib/group-items.svelte';
   import { googleSerpUrl } from '$lib/utils/country';
   import { SERIES, AXIS } from '$lib/chart-theme';
   import type { PageData } from './$types';
@@ -193,9 +193,23 @@
     loadPulse(pulseDays);
   }
 
-  let visibleSites = $derived(
-    data.sites.filter(s => !hidden.has(keyOf(s)) || showHidden)
-  );
+  // Сортировка по «В группу» — на месте, без перезагрузки: сначала (или в конце)
+  // сайты, уже добавленные в группу над таблицей. Другие заголовки её сбрасывают.
+  let groupSort = $state<'' | 'asc' | 'desc'>('');
+  $effect(() => {
+    void data.sort;
+    void data.dir;
+    groupSort = '';
+  });
+  let visibleSites = $derived.by(() => {
+    const list = data.sites.filter(s => !hidden.has(keyOf(s)) || showHidden);
+    if (!groupSort) return list;
+    const k = groupSort === 'desc' ? -1 : 1;
+    return list
+      .map((s, i) => ({ s, i, on: siteInTarget(s.siteUrl) ? 1 : 0 }))
+      .sort((a, b) => (a.on - b.on) * k || a.i - b.i)
+      .map((x) => x.s);
+  });
 
   // Totals across non-hidden sites for the selected period.
   let totals = $derived.by(() => {
@@ -236,7 +250,7 @@
   }
 
   function sortIndicator(field: string, currentSort: string, currentDir: 'asc' | 'desc'): 'asc' | 'desc' | '' {
-    if (currentSort !== field) return '';
+    if (groupSort || currentSort !== field) return '';
     return currentDir;
   }
 
@@ -1245,7 +1259,9 @@
                   <span class="text-ink-4" aria-hidden="true"> · </span>
                   <a class="sort-th" href={sortHref('account', data.sort, data.dir, data.days)}>Account<SortCaret dir={sortIndicator('account', data.sort, data.dir)} /></a>
                 </th>
-                <th class="print:hidden" title="Добавить сайт в группу, выбранную над таблицей">В группу</th>
+                <th class="print:hidden" title="Добавить сайт в группу, выбранную над таблицей. Клик — сначала сайты в группе">
+                  <button type="button" class="sort-th" onclick={() => (groupSort = groupSort === '' ? 'desc' : groupSort === 'desc' ? 'asc' : '')}>В группу<SortCaret dir={groupSort} /></button>
+                </th>
                 <th class="print:hidden"><span class="sr-only">Trend</span></th>
                 <th class="num">
                   <a class="sort-th" href={sortHref('clicks', data.sort, data.dir, data.days)}>Clicks<SortCaret dir={sortIndicator('clicks', data.sort, data.dir)} /></a>
