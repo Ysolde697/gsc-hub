@@ -182,7 +182,7 @@
             <tr>
               <td class="pii font-medium">{r.query}</td>
               <td><IntentBadge query={r.query} page={r.page} /></td>
-              <td class="max-w-sm"><a class="pii break-all text-ink-3 hover:text-acc hover:underline" href={r.page} target="_blank" rel="noopener noreferrer">{r.page}</a></td>
+              <td class="min-w-[14rem] max-w-sm"><a class="pii break-all text-ink-3 hover:text-acc hover:underline" href={r.page} target="_blank" rel="noopener noreferrer">{r.page}</a></td>
               <td class="num app-num">{r.position.toFixed(1)}</td>
               <td class="num app-num">{fmt(r.impressions)}</td>
               <td class="num"><VolumeCell v={vols.byQuery[r.query]} loading={vols.loading} /></td>

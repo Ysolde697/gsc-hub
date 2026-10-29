@@ -193,8 +193,9 @@
   const selectedQueries = $derived<string[]>([
     ...new Set(strikingRows.filter((r: { page: string; query: string }) => selectedPairs.has(pairKey(r.page, r.query))).map((r: { query: string }) => r.query))
   ]);
+  // Отмеченные галочками ключи, а если ничего не отмечено — все ключи в таблице.
   function checkSelectedVolumes() {
-    const qs = selectedQueries;
+    const qs = selectedQueries.length ? selectedQueries : [...new Set<string>(strikingRows.map((r: { query: string }) => r.query))];
     if (!qs.length) return;
     if (!confirm(`Проверить частотность ${qs.length} ключей в DataForSEO? Это платно (несколько центов за пачку до 1000 ключей), уже проверенные ключи повторно не оплачиваются.`)) return;
     vols.check(data.siteUrl, qs);
@@ -826,6 +827,14 @@
                     <button class="btn btn-sec" type="submit" disabled={analyticsLoading}>Применить</button>
                     <button class="btn btn-ghost" type="button" onclick={() => { urlMask = ''; filterUrls(); }} disabled={analyticsLoading}>Сбросить</button>
                     <span class="text-xs text-ink-3">Показано {strikingRows.length}</span>
+                    <span class="flex-1"></span>
+                    <button
+                      class="btn btn-sec"
+                      type="button"
+                      disabled={vols.checking || strikingRows.length === 0}
+                      title="Точная частотность от Google Ads. Отмеченные галочками ключи, а если ничего не отмечено — все в таблице. Уже проверенные повторно не оплачиваются"
+                      onclick={checkSelectedVolumes}
+                    >{vols.checking ? 'Проверяю…' : `Частотность в DataForSEO (${selectedQueries.length || new Set(strikingRows.map((r: { query: string }) => r.query)).size})`}</button>
                   </form>
                   <div class="flex flex-wrap items-center gap-2 text-xs">
                     <span class="text-ink-3">Позиции:</span>
@@ -892,7 +901,7 @@
                             </td>
                             <td class="font-medium"><span class="pii">{r.query}</span></td>
                             <td><IntentBadge query={r.query} page={r.page} brandTerms={data.brandedTerms ?? []} /></td>
-                            <td class="max-w-md text-ink-3"><div class="flex items-center gap-1"><a class="pii min-w-0 break-all hover:text-acc hover:underline" href={r.page} target="_blank" rel="noopener noreferrer" title="Открыть страницу">{r.page}</a><button class="btn btn-ghost btn-sm shrink-0" title="Исключить этот URL для домена" aria-label="Исключить {r.page}" disabled={exclusionBusy} onclick={() => updateExclusions('POST', { pattern: r.page, kind: 'exact' })}>×</button></div></td>
+                            <td class="min-w-[16rem] max-w-md text-ink-3"><div class="flex items-center gap-1"><a class="pii min-w-0 break-all hover:text-acc hover:underline" href={r.page} target="_blank" rel="noopener noreferrer" title="Открыть страницу">{r.page}</a><button class="btn btn-ghost btn-sm shrink-0" title="Исключить этот URL для домена" aria-label="Исключить {r.page}" disabled={exclusionBusy} onclick={() => updateExclusions('POST', { pattern: r.page, kind: 'exact' })}>×</button></div></td>
                             <td class="num app-num">{pos(r.position)}</td>
                             {@render serpCell(r.query)}
                             <td class="num app-num pii">{fmt(r.impressions)}</td>
