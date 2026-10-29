@@ -11,6 +11,7 @@
     { href: '/dashboard', label: 'Dashboard' },
     { href: '/properties', label: 'Sites' },
     { href: '/properties/striking', label: 'Portfolio', title: 'Портфельная аналитика: striking distance, каннибализация, CTR, branded, decay' },
+    { href: '/keywords', label: 'Ключи сайтов', title: 'Все сайты выбранной консоли и все их ключи за период: сегодня, вчера, 7–480 дней' },
     { href: '/search', label: 'Поиск ключа', title: 'На каких ваших сайтах и страницах есть ключ и на каком месте' },
     { href: '/groups', label: 'Группы', title: 'Группы сайтов и закупки ссылок' },
     { href: '/events', label: 'Events', title: 'Склейки доменов и покупки ссылок с датами' },
