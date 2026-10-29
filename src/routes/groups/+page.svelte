@@ -70,6 +70,30 @@
   };
   let editorOpen = $state(false);
 
+  // Раскрывашка в «Сайтах группы»: клик по сайту показывает его ссылки в этой группе.
+  let openHosts = $state<Set<string>>(new Set());
+  function toggleHost(h: string) {
+    const next = new Set(openHosts);
+    if (next.has(h)) next.delete(h);
+    else next.add(h);
+    openHosts = next;
+  }
+  const hostOfItem = (page: string) => {
+    try {
+      return new URL(page).hostname.replace(/^www\./, '');
+    } catch {
+      return '';
+    }
+  };
+  const itemsOfHost = $derived.by(() => {
+    const m = new Map<string, typeof data.items>();
+    for (const it of data.items) {
+      const h = hostOfItem(it.page);
+      m.set(h, [...(m.get(h) ?? []), it]);
+    }
+    return m;
+  });
+
   // Сортировка таблицы «Сайты группы».
   type HostKey = 'done' | 'host' | 'console' | 'links';
   const hostSort = new TableSort<HostKey>(null, 1, ['links']);
@@ -306,7 +330,12 @@
                         <input type="checkbox" checked={isDone} aria-label="Сайт {h} пройден" onchange={(e) => e.currentTarget.form?.requestSubmit()} />
                       </form>
                     </td>
-                    <td class="pii font-medium text-ink {isDone ? 'line-through' : ''}">{h}</td>
+                    <td class="pii font-medium text-ink {isDone ? 'line-through' : ''}">
+                      <button type="button" class="flex items-center gap-1 text-left hover:text-acc" aria-expanded={openHosts.has(h)} title="Показать ссылки этого сайта в группе" onclick={() => toggleHost(h)}>
+                        <svg viewBox="0 0 16 16" class="h-3 w-3 shrink-0 text-ink-4 transition-transform {openHosts.has(h) ? 'rotate-90' : ''}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5"/></svg>
+                        {h}
+                      </button>
+                    </td>
                     <td class="pii text-xs text-ink-3">{knownByHost.get(h)?.accounts.join(', ') || 'нет ни в одной консоли'}</td>
                     <td class="num app-num">{itemsByHost.get(h) ?? 0}</td>
                     <td>
@@ -326,6 +355,54 @@
                       {/if}
                     </td>
                   </tr>
+                  {#if openHosts.has(h)}
+                    {@const list = itemsOfHost.get(h) ?? []}
+                    <tr class="bg-sunk hover:bg-sunk">
+                      <td></td>
+                      <td colspan="5" class="py-2">
+                        {#if list.length === 0}
+                          <p class="text-xs text-ink-3">В этой группе для сайта пока ничего нет. Нажмите «Открыть → Striking» и добавляйте ключи кнопкой +, или добавьте безанкорные справа.</p>
+                        {:else}
+                          <div class="mb-1 text-xs text-ink-3">{list.length} строк · {list.reduce((a, i) => a + i.qty, 0)} ссылок</div>
+                          <table class="app-table rounded border border-line bg-pane">
+                            <thead><tr><th>Тип</th><th>Анкор</th><th>Страница</th><th class="num">Ссылок</th><th class="num">Pos</th><th class="num">Impr</th><th class="num">Clicks</th><th></th></tr></thead>
+                            <tbody>
+                              {#each list as it (it.id)}
+                                <tr>
+                                  <td class="text-xs text-ink-3">{it.kind === 'naked' ? 'Безанкор' : 'Анкор'}</td>
+                                  <td class="pii font-medium">{it.kind === 'naked' ? '—' : it.query}</td>
+                                  <td class="max-w-md"><a class="pii break-all text-ink-3 hover:text-acc hover:underline" href={it.page} target="_blank" rel="noopener noreferrer">{it.page}</a></td>
+                                  <td class="num">
+                                    {#if group.fixedAt}
+                                      <span class="app-num">{it.qty}</span>
+                                    {:else}
+                                      <form method="POST" action="?/qty" use:enhance={() => async ({ update }) => update({ reset: false })}>
+                                        <input type="hidden" name="id" value={group.id} />
+                                        <input type="hidden" name="item" value={it.id} />
+                                        <input name="qty" type="number" min="1" max="1000" value={it.qty} class="input h-7 w-16 px-1 text-right text-xs" aria-label="Сколько ссылок" onchange={(e) => e.currentTarget.form?.requestSubmit()} />
+                                      </form>
+                                    {/if}
+                                  </td>
+                                  <td class="num app-num">{it.position === null ? '—' : it.position.toFixed(1)}</td>
+                                  <td class="num app-num">{fmt(it.impressions)}</td>
+                                  <td class="num app-num">{fmt(it.clicks)}</td>
+                                  <td class="text-right">
+                                    {#if !group.fixedAt}
+                                      <form method="POST" action="?/removeItem" use:enhance>
+                                        <input type="hidden" name="id" value={group.id} />
+                                        <input type="hidden" name="item" value={it.id} />
+                                        <button class="btn btn-ghost btn-sm text-bad" title="Убрать из группы">×</button>
+                                      </form>
+                                    {/if}
+                                  </td>
+                                </tr>
+                              {/each}
+                            </tbody>
+                          </table>
+                        {/if}
+                      </td>
+                    </tr>
+                  {/if}
                 {/each}
               </tbody>
             </table>
