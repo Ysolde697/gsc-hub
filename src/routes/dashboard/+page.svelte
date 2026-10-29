@@ -31,6 +31,8 @@
     date: string;
     totals: { clicks: number; impressions: number };
     bySite?: { siteUrl: string; accountId: string; clicks: number; impressions: number }[];
+    pending?: boolean;
+    startsAt?: string | null;
     partial: boolean;
     errors: { accountEmail: string; reason: string }[];
   };
@@ -435,7 +437,7 @@
 
   <section class="pane mb-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 px-3 py-2">
     <div class="stat-label">
-      Today{#if today}<span class="app-num normal-case tracking-normal"> · {today.date}</span>{/if}
+      Сегодня{#if today}<span class="app-num normal-case tracking-normal"> · {today.date.split('-').reverse().join('.')}</span>{/if}
     </div>
     {#if today}
       <div class="stat">
@@ -446,7 +448,9 @@
         <span class="stat-label">Impressions</span>
         <span class="stat-value pii">{fmtNum(today.totals.impressions)}</span>
       </div>
-      <div class="text-[11px] text-ink-3">still filling — no comparison</div>
+      <div class="text-[11px] text-ink-3">
+        {#if today.pending}Google начнёт считать этот день в {today.startsAt ?? '08:00–09:00'} по Германии (его сутки — по Калифорнии){:else}день ещё идёт — без сравнения{/if}
+      </div>
       {#if today.bySite?.length}
         <div class="flex w-full flex-wrap items-center gap-1 text-[11px]">
           <span class="text-ink-3">сегодня по сайтам:</span>

@@ -80,3 +80,19 @@ describe('completedDayRange', () => {
     expect(at(1)).toEqual({ startDate: '2026-08-21', endDate: '2026-08-21' });
   });
 });
+
+import { localToday, gscDayStartsAtLocal } from '../src/lib/server/gsc-calendar';
+
+describe('сегодня по Германии', () => {
+  it('утром в Германии уже новый день, а у Google ещё вчера', () => {
+    // 29.10.2026 07:00 по Берлину (06:00 UTC, зимнее время в Европе, летнее в США).
+    const now = Date.parse('2026-10-29T06:00:00Z');
+    expect(localToday(now, 'Europe/Berlin')).toBe('2026-10-29');
+    // Google начнёт 29-е в полночь по Лос-Анджелесу = 07:00 UTC = 08:00 по Берлину.
+    expect(gscDayStartsAtLocal('2026-10-29', now, 'Europe/Berlin')).toBe('08:00');
+  });
+  it('после начала дня у Google — null', () => {
+    const now = Date.parse('2026-10-29T12:00:00Z');
+    expect(gscDayStartsAtLocal('2026-10-29', now, 'Europe/Berlin')).toBeNull();
+  });
+});

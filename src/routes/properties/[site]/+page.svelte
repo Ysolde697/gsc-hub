@@ -623,8 +623,6 @@
             </div>
           {/if}
           <div class="ml-auto flex items-center gap-2">
-            <button class="btn btn-sec" onclick={() => indexingOpen = true}>Индексация</button>
-            <button class="btn btn-pri" onclick={() => { buyRows = null; customOpen = true; }}>Купить на свой URL</button>
             <a class="btn btn-ghost" href={siteUrl.startsWith('sc-domain:') ? `https://${siteHost}/` : siteUrl} target="_blank" rel="noopener noreferrer" title="Открыть сайт">
               <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M6.5 3.5h-3v9h9v-3M9 3.5h3.5V7M12.5 3.5 7 9"/></svg>Open
             </a>

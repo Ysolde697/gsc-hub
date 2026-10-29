@@ -1111,10 +1111,12 @@ describe('google date windows', () => {
   it('reports todays partial totals separately from any comparison', async () => {
     const windows = captureWindows();
     const today = await fetchTodayTotals(db);
-    // Today only, and today is still filling — so there is nothing to compare
-    // it against and the window is a single date.
-    expect(windows[0]).toEqual({ startDate: '2026-08-22', endDate: '2026-08-22' });
-    expect(today.date).toBe('2026-08-22');
+    // «Сегодня» — по Германии: 23.08 08:00 по Берлину, а у Google (Калифорния)
+    // ещё 22.08 — день помечен как «ещё не начался», начало в 09:00 (летнее время).
+    expect(windows[0]).toEqual({ startDate: '2026-08-23', endDate: '2026-08-23' });
+    expect(today.date).toBe('2026-08-23');
+    expect(today.pending).toBe(true);
+    expect(today.startsAt).toBe('09:00');
     expect(today.totals.clicks).toBe(0);
   });
 

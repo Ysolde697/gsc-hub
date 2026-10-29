@@ -1,6 +1,6 @@
 import type { Db } from './db';
 import { gscCached } from './gsc-cache';
-import { addCalendarDays, gscToday, completedDayRange } from './gsc-calendar';
+import { addCalendarDays, gscToday, completedDayRange, localToday, gscDayStartsAtLocal } from './gsc-calendar';
 import { INSPECT_LIMIT, mapSettledLimit } from './concurrency';
 import { getGoogleClientId, getGoogleClientSecret } from './config';
 import {
@@ -675,6 +675,10 @@ export interface TodayTotals {
   /** The date these totals are for, in Search Console's timezone. */
   date: string;
   totals: PeriodTotals;
+  /** Google ещё не начал этот день (его сутки — по Калифорнии, на 9 часов позже Германии). */
+  pending: boolean;
+  /** Во сколько по местному времени Google начнёт этот день («08:00»), если ещё не начал. */
+  startsAt: string | null;
   /** Из каких сайтов набрались сегодняшние цифры (только ненулевые, по убыванию показов). */
   bySite: { siteUrl: string; accountId: string; clicks: number; impressions: number }[];
   errors: DailyBreakdownFanOut['errors'];
@@ -685,7 +689,9 @@ export interface TodayTotals {
 // Today on its own, deliberately uncompared: the day is still accumulating, so
 // the only honest thing to do with the number is show it.
 export async function fetchTodayTotals(db: Db): Promise<TodayTotals> {
-  const date = gscToday();
+  // «Сегодня» — по часовому поясу владельца (Германия), а не по Калифорнии.
+  const date = localToday();
+  const pending = gscToday() < date;
   const accounts = listReportAccounts(db);
   const errors: DailyBreakdownFanOut['errors'] = [];
   const pairs: { acc: AccountRow; site: SiteRow }[] = [];
@@ -740,7 +746,7 @@ export async function fetchTodayTotals(db: Db): Promise<TodayTotals> {
   // contributes zero properties, which counting only site-level failures read
   // as "nothing went wrong".
   bySite.sort((a, b) => b.impressions - a.impressions || b.clicks - a.clicks);
-  return { date, totals: totalsOf(daily), bySite, errors, partial: errors.length > 0 };
+  return { date, totals: totalsOf(daily), pending, startsAt: gscDayStartsAtLocal(date), bySite, errors, partial: errors.length > 0 };
 }
 
 function totalsOf(rows: DailyRow[]): PeriodTotals {

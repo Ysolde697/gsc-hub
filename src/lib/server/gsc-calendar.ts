@@ -24,6 +24,15 @@ export function gscToday(now: number = Date.now()): string {
   return formatter.format(new Date(now));
 }
 
+// Часовой пояс владельца панели: «сегодня» на Dashboard — по нему. Германия по
+// умолчанию; поменять — переменной окружения DISPLAY_TZ.
+export const DISPLAY_TIME_ZONE = process.env.DISPLAY_TZ || 'Europe/Berlin';
+
+/** Сегодняшняя дата в часовом поясе владельца панели, YYYY-MM-DD. */
+export function localToday(now: number = Date.now(), tz: string = DISPLAY_TIME_ZONE): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(now));
+}
+
 /** The most recent day that has finished — today is still accumulating. */
 export function latestCompleteDay(now: number = Date.now()): string {
   return addCalendarDays(gscToday(now), -1);
@@ -52,4 +61,17 @@ export function completedDayRange(
 ): { startDate: string; endDate: string } {
   const endDate = latestCompleteDay(now);
   return { startDate: addCalendarDays(endDate, -(days - 1)), endDate };
+}
+
+/**
+ * Во сколько по местному времени Google начнёт сутки `date` (его сутки — по
+ * Калифорнии; разница с Германией 8–9 часов в зависимости от перевода часов).
+ * Возвращает «HH:MM» или null, если этот день у Google уже начался.
+ */
+export function gscDayStartsAtLocal(date: string, now: number = Date.now(), tz: string = DISPLAY_TIME_ZONE): string | null {
+  if (gscToday(now) >= date) return null;
+  // Шагаем по 15 минут вперёд до момента, когда у Google наступит `date` (не дальше суток).
+  let t = now - (now % (15 * 60_000));
+  for (let i = 0; i < 4 * 26 && gscToday(t) < date; i++) t += 15 * 60_000;
+  return new Intl.DateTimeFormat('ru-RU', { timeZone: tz, hour: '2-digit', minute: '2-digit' }).format(new Date(t));
 }

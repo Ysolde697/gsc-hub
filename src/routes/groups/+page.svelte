@@ -315,7 +315,7 @@
                           <input type="hidden" name="id" value={group.id} />
                           <input type="hidden" name="site" value={knownByHost.get(h)?.open.siteUrl ?? `https://${h}/`} />
                           <input name="page" value={`https://${h}/`} class="input h-7 w-56 text-xs" aria-label="Страница для безанкорных ссылок" required />
-                          <input name="qty" type="number" min="1" max="1000" value="1" class="input h-7 w-14 px-1 text-right text-xs" aria-label="Сколько ссылок" />
+                          <input name="qty" type="number" min="1" max="1000" placeholder="шт" required class="input h-7 w-14 border-dashed px-1 text-right text-xs" aria-label="Сколько ссылок" />
                           <button class="btn btn-sec btn-sm" title="Добавить безанкорные ссылки на эту страницу">+ безанкор</button>
                         </form>
                       {/if}

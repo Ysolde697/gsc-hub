@@ -1209,11 +1209,6 @@
                 <th class="num">
                   <a class="sort-th" href={sortHref('position', data.sort, data.dir, data.days)}>Avg Pos<SortCaret dir={sortIndicator('position', data.sort, data.dir)} /></a>
                 </th>
-                <th class="num hidden lg:table-cell" title="Дата создания сайта (таблица site_dates, заполняется внешним импортом)">
-                  <a class="sort-th" href={sortHref('date', data.sort, data.dir, data.days)}>Created<SortCaret dir={sortIndicator('date', data.sort, data.dir)} /></a>
-                </th>
-                <th class="num hidden md:table-cell" title="Bing clicks · последние ~2 недели (не зависит от фильтра дней)">Bing Clk</th>
-                <th class="num hidden md:table-cell" title="Bing impressions · последние ~2 недели (не зависит от фильтра дней)">Bing Impr</th>
                 <th class="w-0 p-0 print:hidden"><span class="sr-only">Actions</span></th>
               </tr>
             </thead>
@@ -1295,9 +1290,6 @@
                       <span class="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-dn align-middle" title={s.summaryError ?? 'error'}></span>—
                     </td>
                   {/if}
-                  <td class="num app-num hidden whitespace-nowrap text-ink-3 lg:table-cell" title="Дата создания сайта">{fmtDate(s.createdAt)}</td>
-                  <td class="num app-num hidden md:table-cell {s.bing ? '' : 'text-ink-4'}" title="Bing · последние ~2 недели">{s.bing ? fmtNum(s.bing.clicks) : '—'}</td>
-                  <td class="num app-num hidden md:table-cell {s.bing ? '' : 'text-ink-4'}" title="Bing · последние ~2 недели">{s.bing ? fmtNum(s.bing.impressions) : '—'}</td>
                   <!-- Кнопки отправки sitemap / Bing / IndexNow / CSV убраны по просьбе пользователя;
                        осталась только «Unhide» для уже скрытых сайтов. -->
                   <td class="w-0 p-0 print:hidden" onclick={(e) => e.stopPropagation()}>
@@ -1308,7 +1300,7 @@
                 </tr>
                 {#if expanded}
                   <tr class="bg-sunk hover:bg-sunk">
-                    <td class="px-3 py-3" colspan="13">
+                    <td class="px-3 py-3" colspan="10">
                       {#if inspectState.kind === 'loading'}
                         <p class="loading">Inspecting {inspectState.total} top URLs (URL Inspection API, ~3-5s)…</p>
                       {:else if inspectState.kind === 'error'}
