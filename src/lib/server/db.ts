@@ -274,6 +274,16 @@ CREATE TABLE IF NOT EXISTS button_clicks (
   PRIMARY KEY (day, host, page, kind, label, target)
 );
 CREATE INDEX IF NOT EXISTS idx_button_clicks_host_day ON button_clicks (host, day);
+
+-- Сколько секунд страницы были открыты на экране (сумма за день).
+-- Среднее время = seconds / просмотры (kind = 'view' в button_clicks).
+CREATE TABLE IF NOT EXISTS page_time (
+  day     TEXT NOT NULL,
+  host    TEXT NOT NULL,
+  page    TEXT NOT NULL,
+  seconds INTEGER NOT NULL,
+  PRIMARY KEY (day, host, page)
+);
 `;
 
 export function openDb(path: string): Db {

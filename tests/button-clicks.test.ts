@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openDb, type Db } from '../src/lib/server/db';
-import { parseClick, recordClick, clicksForRange, allowClick, counterScript, lastSeen } from '../src/lib/server/button-clicks';
+import { parseClick, recordClick, clicksForRange, allowClick, counterScript, lastSeen, parseTime, recordTime, timeForRange } from '../src/lib/server/button-clicks';
 import { isPublicPath } from '../src/lib/server/guard';
 
 const q = (o: Record<string, string>) => new URLSearchParams(o);
@@ -45,6 +45,15 @@ describe('recordClick / clicksForRange', () => {
     expect(clicksForRange(db, '2026-10-29', '2026-10-29')[0].n).toBe(2);
     expect(clicksForRange(db, '2026-10-01', '2026-10-29')[0].n).toBe(3);
     expect(lastSeen(db)).toEqual({ 'fccoins.co.uk': '2026-10-29' });
+  });
+  it('время на странице: сумма секунд, не больше 30 минут за раз', () => {
+    const t = parseTime(new URLSearchParams({ k: 'time', p: '/faq/', d: '42' }), 'https://fccoins.de/')!;
+    expect(t).toEqual({ host: 'fccoins.de', page: '/faq/', seconds: 42 });
+    expect(parseTime(new URLSearchParams({ k: 'time', p: '/', d: '99999' }), 'https://fccoins.de/')!.seconds).toBe(1800);
+    expect(parseTime(new URLSearchParams({ k: 'time', p: '/', d: '-5' }), 'https://fccoins.de/')).toBeNull();
+    recordTime(db, t, '2026-10-29');
+    recordTime(db, t, '2026-10-29');
+    expect(timeForRange(db, '2026-10-29', '2026-10-29')).toEqual([{ host: 'fccoins.de', page: '/faq/', seconds: 84 }]);
   });
 });
 

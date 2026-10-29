@@ -2,7 +2,7 @@ import type { RequestHandler } from './$types';
 import { db } from '$lib/server/db';
 import { listAllKnownSites } from '$lib/server/google';
 import { siteHostname } from '$lib/utils/url-filters';
-import { allowClick, clicksToday, normHost, parseClick, recordClick } from '$lib/server/button-clicks';
+import { allowClick, clicksToday, normHost, parseClick, parseTime, recordClick, recordTime } from '$lib/server/button-clicks';
 
 // Открытый адрес счётчика (без входа): сайт сообщает «нажали кнопку».
 // Считаем только ваши сайты из подключённых консолей, с ограничением частоты.
@@ -30,6 +30,16 @@ const EMPTY = () =>
   new Response(null, { status: 204, headers: { 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' } });
 
 export const GET: RequestHandler = async ({ url, request, getClientAddress }) => {
+  if (url.searchParams.get('k') === 'time') {
+    const t = parseTime(url.searchParams, request.headers.get('referer'));
+    const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || getClientAddress();
+    try {
+      if (t && (await knownHosts()).has(t.host) && allowClick(ip, { host: t.host, page: t.page, kind: 'view', label: 'time:' + Date.now(), target: '' })) recordTime(db(), t);
+    } catch {
+      /* счётчик не должен ломать сайт */
+    }
+    return EMPTY();
+  }
   const e = parseClick(url.searchParams, request.headers.get('referer'));
   if (!e) return EMPTY();
   const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || getClientAddress();

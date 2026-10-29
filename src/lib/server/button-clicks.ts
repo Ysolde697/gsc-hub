@@ -49,6 +49,27 @@ export function recordClick(db: Db, e: ClickEvent, day: string = localToday()): 
   ).run(day, e.host, e.page, e.kind, e.label, e.target);
 }
 
+/** Время на странице: d — секунды показа на экране с прошлой отправки (не больше 30 минут). */
+export function parseTime(params: URLSearchParams, referer: string | null): { host: string; page: string; seconds: number } | null {
+  const e = parseClick(new URLSearchParams({ ...Object.fromEntries(params), k: 'view' }), referer);
+  const d = Math.round(Number(params.get('d')));
+  if (!e || !Number.isFinite(d) || d <= 0) return null;
+  return { host: e.host, page: e.page, seconds: Math.min(d, 1800) };
+}
+
+export function recordTime(db: Db, t: { host: string; page: string; seconds: number }, day: string = localToday()): void {
+  db.prepare(
+    `INSERT INTO page_time (day, host, page, seconds) VALUES (?, ?, ?, ?)
+     ON CONFLICT(day, host, page) DO UPDATE SET seconds = seconds + excluded.seconds`
+  ).run(day, t.host, t.page, t.seconds);
+}
+
+export function timeForRange(db: Db, startDate: string, endDate: string): { host: string; page: string; seconds: number }[] {
+  return db
+    .prepare('SELECT host, page, SUM(seconds) AS seconds FROM page_time WHERE day >= ? AND day <= ? GROUP BY host, page')
+    .all(startDate, endDate) as { host: string; page: string; seconds: number }[];
+}
+
 /** Сколько событий сайт уже прислал сегодня — потолок от накрутки. */
 export function clicksToday(db: Db, host: string, day: string = localToday()): number {
   const r = db.prepare('SELECT COALESCE(SUM(n), 0) AS n FROM button_clicks WHERE host = ? AND day = ?').get(host, day) as { n: number };
@@ -107,6 +128,21 @@ export function counterScript(origin: string): string {
   }
   // Просмотр страницы — один раз при открытии.
   send('view', '', '');
+  // Время на экране: считаем, пока вкладка видна; отправляем, когда её
+  // скрывают или закрывают (каждый раз — только новые секунды).
+  var shownAt = document.visibilityState === 'visible' ? Date.now() : 0, acc = 0;
+  function flush() {
+    if (shownAt) { acc += Date.now() - shownAt; shownAt = 0; }
+    var d = Math.round(acc / 1000);
+    if (d < 1) return;
+    acc = 0;
+    var u = E + '?k=time&h=' + encodeURIComponent(location.hostname) + '&p=' + encodeURIComponent(location.pathname) + '&d=' + d;
+    try { fetch(u, { mode: 'no-cors', keepalive: true, credentials: 'omit' }); } catch (e) { new Image().src = u; }
+  }
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden') flush(); else shownAt = Date.now();
+  });
+  window.addEventListener('pagehide', flush);
   function label(el) { return el.getAttribute('data-track') || el.getAttribute('aria-label') || el.innerText || el.value || el.title || ''; }
   function where(href) {
     try { var u = new URL(href, location.href); return u.host === location.host ? u.pathname + u.search + u.hash : u.host + u.pathname; } catch (e) { return href || ''; }

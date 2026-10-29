@@ -2,7 +2,7 @@ import type { PageServerLoad } from './$types';
 import { db } from '$lib/server/db';
 import { requireAdmin } from '$lib/server/guard';
 import { parsePeriod, sitesForPeriod } from '$lib/server/site-keys';
-import { clicksForRange, lastSeen, normHost } from '$lib/server/button-clicks';
+import { clicksForRange, lastSeen, normHost, timeForRange } from '$lib/server/button-clicks';
 import { siteHostname } from '$lib/utils/url-filters';
 
 export const load: PageServerLoad = async ({ locals, url }) => {
@@ -22,5 +22,5 @@ export const load: PageServerLoad = async ({ locals, url }) => {
       /* битый адрес */
     }
   }
-  return { period, clicks, gsc, gscImpr, lastSeen: lastSeen(db()), errors, origin: url.origin };
+  return { period, clicks, time: timeForRange(db(), period.startDate, period.endDate), gsc, gscImpr, lastSeen: lastSeen(db()), errors, origin: url.origin };
 };

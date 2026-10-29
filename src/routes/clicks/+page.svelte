@@ -29,10 +29,10 @@
     open = n;
   };
 
-  type Site = { host: string; impr: number; gsc: number; views: number; buttons: number; submits: number; rateSubmit: number | null; rateButton: number | null };
+  type Site = { host: string; impr: number; gsc: number; views: number; seconds: number; avg: number | null; buttons: number; submits: number; rateSubmit: number | null; rateButton: number | null };
   const sitesRaw = $derived.by(() => {
     const m = new Map<string, Site>();
-    const get = (h: string) => m.get(h) ?? (m.set(h, { host: h, impr: data.gscImpr[h] ?? 0, gsc: data.gsc[h] ?? 0, views: 0, buttons: 0, submits: 0, rateSubmit: null, rateButton: null }), m.get(h)!);
+    const get = (h: string) => m.get(h) ?? (m.set(h, { host: h, impr: data.gscImpr[h] ?? 0, gsc: data.gsc[h] ?? 0, views: 0, seconds: 0, avg: null, buttons: 0, submits: 0, rateSubmit: null, rateButton: null }), m.get(h)!);
     for (const r of data.clicks) {
       const s = get(r.host);
       if (r.kind === 'view') s.views += r.n;
@@ -40,20 +40,46 @@
       else if (r.kind === 'button' || r.kind === 'out') s.buttons += r.n;
     }
     for (const h of Object.keys(data.lastSeen)) get(h);
+    for (const t of data.time) get(t.host).seconds += t.seconds;
     for (const s of m.values()) {
+      s.avg = s.views ? s.seconds / s.views : null;
       s.rateSubmit = s.gsc ? s.submits / s.gsc : null;
       s.rateButton = s.gsc ? s.buttons / s.gsc : null;
     }
     return [...m.values()];
   });
-  type K = 'host' | 'impr' | 'gsc' | 'views' | 'buttons' | 'submits' | 'rateButton' | 'rateSubmit';
-  const sort = new TableSort<K>('submits', -1, ['impr', 'gsc', 'views', 'buttons', 'submits', 'rateButton', 'rateSubmit']);
+  type K = 'host' | 'impr' | 'gsc' | 'views' | 'avg' | 'buttons' | 'submits' | 'rateButton' | 'rateSubmit';
+  const sort = new TableSort<K>('submits', -1, ['impr', 'gsc', 'views', 'avg', 'buttons', 'submits', 'rateButton', 'rateSubmit']);
   const sites = $derived(sort.apply(sitesRaw, (s, k) => s[k]));
 
   type DK = 'label' | 'kind' | 'page' | 'target' | 'n';
   const dsort = new TableSort<DK>('n', -1, ['n']);
   const detail = (h: string) => dsort.apply(data.clicks.filter((r) => r.host === h && r.kind !== 'view' && (withLinks || r.kind !== 'link')), (r, k) => r[k]);
 
+  // По страницам сайта: просмотры, среднее время, нажатия, заказы.
+  type Page = { page: string; views: number; avg: number | null; buttons: number; submits: number };
+  type PK = 'page' | 'views' | 'avg' | 'buttons' | 'submits';
+  const psort = new TableSort<PK>('views', -1, ['views', 'avg', 'buttons', 'submits']);
+  function pagesOf(h: string): Page[] {
+    const m = new Map<string, Page & { seconds: number }>();
+    const get = (p: string) => m.get(p) ?? (m.set(p, { page: p, views: 0, avg: null, buttons: 0, submits: 0, seconds: 0 }), m.get(p)!);
+    for (const r of data.clicks) {
+      if (r.host !== h) continue;
+      const p = get(r.page);
+      if (r.kind === 'view') p.views += r.n;
+      else if (r.kind === 'submit') p.submits += r.n;
+      else if (r.kind === 'button' || r.kind === 'out') p.buttons += r.n;
+    }
+    for (const t of data.time) if (t.host === h) get(t.page).seconds += t.seconds;
+    for (const p of m.values()) p.avg = p.views ? p.seconds / p.views : null;
+    return psort.apply([...m.values()], (p, k) => p[k]);
+  }
+  /** 75 → «1 мин 15 с» */
+  const dur = (sec: number | null) => {
+    if (sec === null) return '—';
+    const s = Math.round(sec);
+    return s < 60 ? `${s} с` : `${Math.floor(s / 60)} мин ${s % 60} с`;
+  };
   const fmt = (n: number) => n.toLocaleString('ru-RU');
   const pct = (v: number | null) => (v === null ? '—' : `${(v * 100).toFixed(1)}%`);
   const fmtDay = (iso: string) => iso.split('-').reverse().join('.');
@@ -108,6 +134,7 @@
               <SortTh {sort} k="impr" label="Показы в Google" num title="Search Console за тот же период: сколько раз сайт показали в поиске" />
               <SortTh {sort} k="gsc" label="Клики из Google" num title="Search Console за тот же период" />
               <SortTh {sort} k="views" label="Просмотры страниц" num title="Сколько раз открыли страницы сайта (счётчик; считается с момента обновления скрипта)" />
+              <SortTh {sort} k="avg" label="Среднее время" num title="Сколько в среднем страница была открыта на экране (свёрнутая вкладка не считается)" />
               <SortTh {sort} k="buttons" label="Нажали кнопку" num title="Кнопки и ссылки на другие сайты" />
               <SortTh {sort} k="rateButton" label="% от кликов" num title="Нажали кнопку / клики из Google" />
               <SortTh {sort} k="submits" label="Отправили форму" num title="Отправка формы заказа (Continue to checkout и т.п.)" />
@@ -126,6 +153,7 @@
                 <td class="num app-num">{fmt(s.impr)}</td>
                 <td class="num app-num">{fmt(s.gsc)}</td>
                 <td class="num app-num">{fmt(s.views)}</td>
+                <td class="num app-num">{dur(s.avg)}</td>
                 <td class="num app-num">{fmt(s.buttons)}</td>
                 <td class="num app-num">{pct(s.rateButton)}</td>
                 <td class="num app-num font-semibold">{fmt(s.submits)}</td>
@@ -133,8 +161,35 @@
               </tr>
               {#if open.has(s.host)}
                 {@const list = detail(s.host)}
+                {@const pages = pagesOf(s.host)}
                 <tr class="bg-sunk hover:bg-sunk">
-                  <td colspan="8" class="px-3 py-2">
+                  <td colspan="9" class="px-3 py-2">
+                    {#if pages.length}
+                      <div class="mb-1 text-xs font-semibold text-ink-2">Страницы</div>
+                      <table class="app-table mb-3 rounded border border-line bg-pane">
+                        <thead>
+                          <tr>
+                            <SortTh sort={psort} k="page" label="Страница" />
+                            <SortTh sort={psort} k="views" label="Просмотры" num />
+                            <SortTh sort={psort} k="avg" label="Среднее время" num />
+                            <SortTh sort={psort} k="buttons" label="Нажали кнопку" num />
+                            <SortTh sort={psort} k="submits" label="Отправили форму" num />
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {#each pages as pg (pg.page)}
+                            <tr>
+                              <td class="pii text-xs"><a class="hover:text-acc hover:underline" href="https://{s.host}{pg.page}" target="_blank" rel="noopener noreferrer">{pg.page}</a></td>
+                              <td class="num app-num">{fmt(pg.views)}</td>
+                              <td class="num app-num">{dur(pg.avg)}</td>
+                              <td class="num app-num">{fmt(pg.buttons)}</td>
+                              <td class="num app-num font-semibold">{fmt(pg.submits)}</td>
+                            </tr>
+                          {/each}
+                        </tbody>
+                      </table>
+                      <div class="mb-1 text-xs font-semibold text-ink-2">Кнопки и ссылки</div>
+                    {/if}
                     {#if list.length === 0}
                       <p class="text-xs text-ink-3">За этот период нажатий нет.</p>
                     {:else}
