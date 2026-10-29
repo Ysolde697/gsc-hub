@@ -2,6 +2,7 @@
   import { enhance } from '$app/forms';
   import { siteHostname } from '$lib/utils/url-filters';
   import OtherSitesInline from '$lib/components/OtherSitesInline.svelte';
+  import SiteKeysPanel from '$lib/components/SiteKeysPanel.svelte';
   import SortTh from '$lib/components/SortTh.svelte';
   import SortCaret from '$lib/components/SortCaret.svelte';
   import { TableSort } from '$lib/table-sort.svelte';
@@ -360,8 +361,9 @@
                     <tr class="bg-sunk hover:bg-sunk">
                       <td></td>
                       <td colspan="5" class="py-2">
+                        <div class="mb-1 text-xs font-semibold text-ink-2">Уже на покупку в этой группе</div>
                         {#if list.length === 0}
-                          <p class="text-xs text-ink-3">В этой группе для сайта пока ничего нет. Нажмите «Открыть → Striking» и добавляйте ключи кнопкой +, или добавьте безанкорные справа.</p>
+                          <p class="text-xs text-ink-3">Пока ничего. Выберите ключи ниже — впишите количество и нажмите +, или добавьте безанкорные справа.</p>
                         {:else}
                           <div class="mb-1 text-xs text-ink-3">{list.length} строк · {list.reduce((a, i) => a + i.qty, 0)} ссылок</div>
                           <table class="app-table rounded border border-line bg-pane">
@@ -399,6 +401,18 @@
                               {/each}
                             </tbody>
                           </table>
+                        {/if}
+                        {#if knownByHost.get(h)}
+                          {@const k = knownByHost.get(h)!}
+                          <SiteKeysPanel
+                            siteUrl={k.open.siteUrl}
+                            accountId={k.open.accountId}
+                            groupId={group.id}
+                            fixed={!!group.fixedAt}
+                            onadd={(r) => itemsPost({ action: 'add', groupId: group.id, item: { siteUrl: r.siteUrl, query: r.query, page: r.page, position: r.position, impressions: r.impressions, clicks: r.clicks, ctr: r.ctr, qty: r.qty } })}
+                          />
+                        {:else}
+                          <p class="mt-2 text-xs text-ink-3">Этого сайта нет ни в одной подключённой консоли — статистики по ключам нет.</p>
                         {/if}
                       </td>
                     </tr>
