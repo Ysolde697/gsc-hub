@@ -39,7 +39,7 @@
       else if (r.kind === 'submit') s.submits += r.n;
       else if (r.kind === 'button' || r.kind === 'out') s.buttons += r.n;
     }
-    for (const h of Object.keys(data.lastSeen)) get(h);
+    for (const h of data.hosts) get(h);
     for (const t of data.time) get(t.host).seconds += t.seconds;
     for (const s of m.values()) {
       s.avg = s.views ? s.seconds / s.views : null;
@@ -124,7 +124,7 @@
     </div>
 
     {#if sites.length === 0}
-      <p class="p-3 text-ink-3">Пока нет данных. Подключите счётчик к сайтам — инструкция выше.</p>
+      <p class="p-3 text-ink-3">В выбранных консолях нет сайтов. Отметьте консоль в шапке («Консоли»).</p>
     {:else}
       <div class="overflow-x-auto">
         <table class="app-table">
@@ -148,6 +148,7 @@
                   <span class="flex items-center gap-1">
                     <svg viewBox="0 0 16 16" class="h-3 w-3 shrink-0 text-ink-4 transition-transform {open.has(s.host) ? 'rotate-90' : ''}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5"/></svg>
                     {s.host}
+                    {#if !data.lastSeen[s.host]}<span class="badge badge-muted ml-1 font-normal" title="С этого сайта ещё не пришло ни одного события — строка счётчика не вставлена">счётчик не стоит</span>{/if}
                   </span>
                 </td>
                 <td class="num app-num">{fmt(s.impr)}</td>
