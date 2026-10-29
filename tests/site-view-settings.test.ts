@@ -36,7 +36,7 @@ const rows = [
   { query: 'a', page: '/a', position: 8, impressions: 100, clicks: 30, ctr: .3 }
 ];
 it('sorts every table column in both directions without mutating input', () => {
-  const expected: Record<string, string> = { query: 'a', page: 'a', position: 'b', serp: 'a', impressions: 'a', clicks: 'b', ctr: 'b', bought: 'a', intent: 'a', others: 'a', last: 'a', group: 'a' };
+  const expected: Record<string, string> = { query: 'a', page: 'a', position: 'b', serp: 'a', impressions: 'a', clicks: 'b', ctr: 'b', bought: 'a', intent: 'a', others: 'a', last: 'a', group: 'a', volume: 'a' };
   const positions = (q: string) => q === 'a' ? 4 : 12;
   const bought = (_: string, q: string) => q === 'a' ? 0 : 15;
   // Колонки, которые считает страница: у 'a' значения меньше.

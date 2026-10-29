@@ -7,6 +7,8 @@
   import SortTh from './SortTh.svelte';
   import { TableSort } from '$lib/table-sort.svelte';
   import { classifyIntent } from '$lib/utils/intent';
+  import { Volumes } from '$lib/volumes.svelte';
+  import VolumeCell from './VolumeCell.svelte';
 
   type Row = { query: string; page: string; position: number; impressions: number; clicks: number; ctr: number; siteUrl: string };
   type Source = { siteUrl: string; accountId: string };
@@ -40,6 +42,8 @@
   let busy = $state<Set<string>>(new Set());
 
   const key = (r: { page: string; query: string }) => `${r.page}\n${r.query}`;
+  const vols = new Volumes();
+  const site = $derived(sources[0]?.siteUrl ?? '');
 
   async function load() {
     loading = true;
@@ -67,6 +71,7 @@
       failed = results.filter((x) => !x.ok).length;
       if (failed === results.length && results.length) throw (results[0] as { e: Error }).e;
       rows = [...merged.values()];
+      vols.load(site, [...new Set(rows.map((r) => r.query))].sort());
       const sites = [...new Set(sources.map((x) => x.siteUrl))];
       const ms = await Promise.all(
         sites.map((u) => fetch(`/groups/items?site=${encodeURIComponent(u)}`).then((m) => (m.ok ? m.json() : { marks: {} })).catch(() => ({ marks: {} })))
@@ -93,14 +98,15 @@
     return d <= 0 ? 'сегодня' : `${d} дн. назад`;
   };
 
-  type K = 'query' | 'intent' | 'page' | 'position' | 'impressions' | 'clicks' | 'ctr' | 'last';
-  const sort = new TableSort<K>('impressions', -1, ['impressions', 'clicks', 'ctr', 'last']);
+  type K = 'query' | 'intent' | 'page' | 'position' | 'impressions' | 'volume' | 'clicks' | 'ctr' | 'last';
+  const sort = new TableSort<K>('impressions', -1, ['impressions', 'volume', 'clicks', 'ctr', 'last']);
   const shown = $derived(
     sort.apply(
       rows.filter((r) => !onlyNew || !inThis(r)),
       (r, k) =>
         k === 'intent' ? ((t) => (t === 'conv' ? 1 : t === 'brand' ? 2 : null))(classifyIntent(r.query, r.page))
         : k === 'last' ? (lastOther(r)?.at ?? null)
+        : k === 'volume' ? vols.sortValue(r.query)
         : r[k]
     )
   );
@@ -122,6 +128,12 @@
     }
   }
   const fmt = (n: number) => n.toLocaleString('ru-RU');
+  function checkShown() {
+    const qs = [...new Set(shown.map((r) => r.query))];
+    if (!qs.length) return;
+    if (!confirm(`Проверить частотность ${qs.length} ключей в DataForSEO? Это платно (несколько центов за пачку до 1000 ключей), уже проверенные ключи повторно не оплачиваются.`)) return;
+    vols.check(site, qs);
+  }
 </script>
 
 <div class="mt-3">
@@ -134,7 +146,12 @@
     </span>
     {#if !loading && !err}<span class="text-ink-3">{rows.length} ключей{sources.length > 1 ? ` · из ${sources.length - failed} из ${sources.length} консолей/property` : ''}</span>{/if}
     <label class="flex items-center gap-1 text-ink-2"><input type="checkbox" bind:checked={onlyNew} /> скрыть уже добавленные в эту группу</label>
+    {#if !loading && !err && shown.length}
+      <button type="button" class="btn btn-sec btn-sm" disabled={vols.checking} title="Точная частотность от Google Ads по ключам в таблице" onclick={checkShown}>{vols.checking ? 'Проверяю…' : `Частотность в DataForSEO (${new Set(shown.map((r) => r.query)).size})`}</button>
+    {/if}
   </div>
+  {#if vols.error}<p class="mb-1 text-xs text-bad">{vols.error}{#if !vols.configured} — <a class="text-acc underline" href="/settings/integrations">раздел «Сервисы»</a>{/if}</p>{/if}
+  {#if vols.note}<p class="mb-1 text-xs text-emerald-700">{vols.note}</p>{/if}
   {#if loading}
     <p class="loading text-xs">Загружаю ключи сайта…</p>
   {:else if err}
@@ -151,6 +168,7 @@
             <SortTh {sort} k="page" label="Страница" />
             <SortTh {sort} k="position" label="Pos" num />
             <SortTh {sort} k="impressions" label="Impr" num />
+            <SortTh {sort} k="volume" label={vols.country ? `Частотность · ${vols.country.toUpperCase()}` : 'Частотность'} num />
             <SortTh {sort} k="clicks" label="Clicks" num />
             <SortTh {sort} k="ctr" label="CTR" num />
             <SortTh {sort} k="last" label="Последняя закупка" />
@@ -167,6 +185,7 @@
               <td class="max-w-sm"><a class="pii break-all text-ink-3 hover:text-acc hover:underline" href={r.page} target="_blank" rel="noopener noreferrer">{r.page}</a></td>
               <td class="num app-num">{r.position.toFixed(1)}</td>
               <td class="num app-num">{fmt(r.impressions)}</td>
+              <td class="num"><VolumeCell v={vols.byQuery[r.query]} loading={vols.loading} /></td>
               <td class="num app-num">{fmt(r.clicks)}</td>
               <td class="num app-num">{(r.ctr * 100).toFixed(1)}%</td>
               <td class="whitespace-nowrap text-[12px]">{#if last}<span class="font-medium text-ink">{last.name}</span> <span class="text-ink-3">· {last.qty} шт · {ago(last.at)}</span>{:else}<span class="text-ink-4">—</span>{/if}</td>

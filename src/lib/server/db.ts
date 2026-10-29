@@ -248,6 +248,16 @@ CREATE TABLE IF NOT EXISTS api_keys (
   last_used_at INTEGER,
   revoked_at   INTEGER
 );
+
+-- Частотность ключей из DataForSEO (Google Ads). Хранится, чтобы не платить
+-- за один и тот же ключ дважды. volume NULL — у Google нет данных по ключу.
+CREATE TABLE IF NOT EXISTS keyword_volumes (
+  query      TEXT NOT NULL,
+  location   INTEGER NOT NULL,
+  volume     INTEGER,
+  fetched_at INTEGER NOT NULL,
+  PRIMARY KEY (query, location)
+);
 `;
 
 export function openDb(path: string): Db {

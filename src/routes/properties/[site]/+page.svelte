@@ -17,6 +17,8 @@
   import { loadGroupItems, loadCompetition, comp, gi, activeGroup, otherGroups, itemKey } from '$lib/group-items.svelte';
   import { classifyIntent } from '$lib/utils/intent';
   import { sortStriking, type StrikingSortKey, type SortDirection } from '$lib/utils/striking-sort';
+  import { Volumes } from '$lib/volumes.svelte';
+  import VolumeCell from '$lib/components/VolumeCell.svelte';
   import { siteHostname, urlExcluded, urlMatchesMask, type UrlExclusion } from '$lib/utils/url-filters';
 
   let { data }: { data: PageData } = $props();
@@ -146,6 +148,8 @@
   let exclusionBusy = $state(false);
   let exclusionError = $state('');
   $effect(() => { exclusions = [...data.urlExclusions]; });
+  // Частотность ключей: оценка по Search Console + DataForSEO по кнопке.
+  const vols = new Volumes();
   const filteredStrikingRows = $derived((analytics?.striking ?? []).filter((r: { page: string }) =>
     !urlExcluded(r.page, exclusions) && (!appliedMask ||
       (appliedMode === 'contains' ? urlMatchesMask(r.page, appliedMask) : !urlMatchesMask(r.page, appliedMask)))
@@ -166,6 +170,7 @@
         const better = e.owners.some((o) => o.position < r.position) ? 1000 : 0;
         return hosts ? better + hosts : null;
       }
+      if (key === 'volume') return vols.sortValue(r.query);
       if (key === 'last') {
         const l = otherGroups(r.page, r.query);
         return l.length ? l[l.length - 1].at : null;
@@ -181,6 +186,19 @@
     // Отсортированный список: смена сортировки таблицы не должна перезапрашивать данные.
     loadCompetition(data.siteUrl, [...new Set(strikingRows.map((r: { query: string }) => r.query))].sort());
   });
+  $effect(() => {
+    if (tab !== 'keywords' || filteredStrikingRows.length === 0) return;
+    vols.load(data.siteUrl, [...new Set<string>(filteredStrikingRows.map((r: { query: string }) => r.query))].sort());
+  });
+  const selectedQueries = $derived<string[]>([
+    ...new Set(strikingRows.filter((r: { page: string; query: string }) => selectedPairs.has(pairKey(r.page, r.query))).map((r: { query: string }) => r.query))
+  ]);
+  function checkSelectedVolumes() {
+    const qs = selectedQueries;
+    if (!qs.length) return;
+    if (!confirm(`Проверить частотность ${qs.length} ключей в DataForSEO? Это платно (несколько центов за пачку до 1000 ключей), уже проверенные ключи повторно не оплачиваются.`)) return;
+    vols.check(data.siteUrl, qs);
+  }
   const selectedVisible = $derived(strikingRows.filter((r: { page: string; query: string }) => selectedPairs.has(pairKey(r.page, r.query))).length);
 
   // Диапазон Striking: позиции 4–20 / 4–50 / все и показов от 10 / 1.
@@ -840,6 +858,8 @@
                   {#if exclusionError}<p class="text-err text-xs" role="alert">{exclusionError}</p>{/if}
                   <GroupBar site={data.siteUrl} />
                   <SiteLinkHistory />
+                  {#if vols.error}<p class="text-err text-xs" role="alert">{vols.error}{#if !vols.configured} — <a class="text-acc underline" href="/settings/integrations">раздел «Сервисы»</a>{/if}</p>{/if}
+                  {#if vols.note}<p class="text-xs text-emerald-700">{vols.note}</p>{/if}
                 </div>
                 {#if strikingRows.length === 0}
                   <p class="loading p-3">Нет запросов с учётом фильтра и исключений.{#if strikingPosMax !== 0 || strikingMinImpr !== 1} Попробуйте «Позиции: все» и «Показов от: 1».{/if}</p>
@@ -854,6 +874,7 @@
                           <th class="sort-th num" aria-sort={sortAria('position')}><button type="button" class="hover:text-ink" onclick={() => sortBy('position')}>Pos<SortCaret dir={sortArrow('position')} /></button></th>
                           <th class="sort-th num" aria-sort={sortAria('serp')}><button type="button" class="hover:text-ink" onclick={() => sortBy('serp')}>SERP<SortCaret dir={sortArrow('serp')} /></button></th>
                           <th class="sort-th num" aria-sort={sortAria('impressions')}><button type="button" class="hover:text-ink" onclick={() => sortBy('impressions')}>Impr<SortCaret dir={sortArrow('impressions')} /></button></th>
+                          <th class="sort-th num" aria-sort={sortAria('volume')} title="Запросов в месяц. GSC ≈ — оценка по вашим сайтам в топ-10; ≥ — нижняя граница. Ads — точное число из DataForSEO: отметьте ключи галочками и нажмите кнопку внизу"><button type="button" class="hover:text-ink" onclick={() => sortBy('volume')}>Частотность{vols.country ? ` · ${vols.country.toUpperCase()}` : ''}<SortCaret dir={sortArrow('volume')} /></button></th>
                           <th class="sort-th num" aria-sort={sortAria('clicks')}><button type="button" class="hover:text-ink" onclick={() => sortBy('clicks')}>Clicks<SortCaret dir={sortArrow('clicks')} /></button></th>
                           <th class="sort-th num" aria-sort={sortAria('ctr')}><button type="button" class="hover:text-ink" onclick={() => sortBy('ctr')}>CTR<SortCaret dir={sortArrow('ctr')} /></button></th>
                           <th class="sort-th num" aria-sort={sortAria('bought')}><button type="button" class="hover:text-ink" onclick={() => sortBy('bought')}>Куплено<SortCaret dir={sortArrow('bought')} /></button></th>
@@ -875,6 +896,7 @@
                             <td class="num app-num">{pos(r.position)}</td>
                             {@render serpCell(r.query)}
                             <td class="num app-num pii">{fmt(r.impressions)}</td>
+                            <td class="num"><VolumeCell v={vols.byQuery[r.query]} loading={vols.loading} /></td>
                             <td class="num app-num pii">{fmt(r.clicks)}</td>
                             <td class="num app-num">{pct(r.ctr)}</td>
                             <td class="num whitespace-nowrap">
@@ -901,7 +923,7 @@
                           {#if historyOpen === k && boughtFor(r.page, r.query)}
                             <tr class="bg-sunk">
                               <td></td>
-                              <td colspan="13" class="text-xs">
+                              <td colspan="14" class="text-xs">
                                 {#each boughtFor(r.page, r.query)!.orders as o (o.orderId)}
                                   <a class="mr-4 text-acc hover:underline"
                                     href="/magiclinks/{o.orderId}?url={encodeURIComponent(r.page)}&q={encodeURIComponent(r.query)}">
@@ -920,6 +942,7 @@
                       <span class="text-[12.5px]">Выбрано пар: <b class="app-num">{selectedVisible}</b></span>
                       <span class="text-xs text-ink-3">одним заданием; провайдер выбирается в окне покупки</span>
                       <span class="flex-1"></span>
+                      <button class="btn btn-sec" disabled={vols.checking} title={vols.configured ? 'Точная частотность от Google Ads, по выбранным ключам' : 'Сначала впишите доступ DataForSEO в разделе «Сервисы»'} onclick={checkSelectedVolumes}>{vols.checking ? 'Проверяю…' : `Частотность в DataForSEO (${selectedQueries.length})`}</button>
                       <button class="btn btn-ghost" onclick={() => (selectedPairs = new Set())}>Снять выделение</button>
                       {#if data.magicLinksReady}
                         <button class="btn btn-pri" onclick={() => buySelected(strikingRows)}>Купить ссылки</button>

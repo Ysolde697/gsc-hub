@@ -1442,8 +1442,9 @@ export interface QueryOwner {
   clicks: number;
 }
 
-export async function fetchQueryOwners(db: Db, days = 28): Promise<Map<string, QueryOwner[]>> {
-  return gscCached(`owners:${days}`, async () => {
+/** Ключ → все ваши сайты с показами по нему (и один сайт тоже). */
+export async function fetchQueryHosts(db: Db, days = 28): Promise<Map<string, QueryOwner[]>> {
+  return gscCached(`qhosts:${days}`, async () => {
     const accounts = listAccounts(db).filter((a) => a.status === 'active');
     const perAccount = await Promise.allSettled(accounts.map((a) => listSitesForAccount(db, a)));
     const pairs: { acc: AccountRow; site: SiteRow }[] = [];
@@ -1475,9 +1476,16 @@ export async function fetchQueryOwners(db: Db, days = 28): Promise<Map<string, Q
       }
     });
     const out = new Map<string, QueryOwner[]>();
-    for (const [q, hosts] of byQuery) if (hosts.size > 1) out.set(q, [...hosts.values()].sort((a, b) => a.position - b.position));
+    for (const [q, hosts] of byQuery) out.set(q, [...hosts.values()].sort((a, b) => a.position - b.position));
     return out;
   }, 60 * 60 * 1000);
+}
+
+export async function fetchQueryOwners(db: Db, days = 28): Promise<Map<string, QueryOwner[]>> {
+  const all = await fetchQueryHosts(db, days);
+  const out = new Map<string, QueryOwner[]>();
+  for (const [q, list] of all) if (list.length > 1) out.set(q, list);
+  return out;
 }
 
 /** Домен → его страны (см. siteCountries). Один запрос по странам на каждую property, кэш час. */

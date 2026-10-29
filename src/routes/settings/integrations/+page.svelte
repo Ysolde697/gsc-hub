@@ -2,10 +2,30 @@
   import { enhance } from '$app/forms';
   let { data, form } = $props();
 </script>
-<svelte:head><title>Индексаторы · GSC Hub</title></svelte:head>
+<svelte:head><title>Сервисы · GSC Hub</title></svelte:head>
 <div class="mx-auto max-w-2xl p-6">
-  <h1 class="mb-4 text-xl font-semibold">Индексаторы</h1>
-  <p class="mb-4 text-ink-2">Сервисы индексации и их API-ключи. Ключ каждого сервиса используется для всех доменов.</p>
+  <h1 class="mb-4 text-xl font-semibold">Сервисы</h1>
+  <p class="mb-4 text-ink-2">Внешние сервисы и их API-ключи. Ключи хранятся только на сервере панели.</p>
+  <div class="mb-4 rounded border border-line bg-pane p-5">
+    <h2 class="mb-2 font-semibold">DataForSEO · частотность ключей</h2>
+    <p class="mb-4 text-ink-2">Точная частотность от Google Ads — по кнопке «Проверить в DataForSEO» над ключами. Каждый ключ оплачивается один раз, дальше ответ берётся из базы. Логин и пароль — из раздела API Access в кабинете DataForSEO (пароль API не совпадает с паролем входа).</p>
+    <p class="mb-3">{data.dfs.configured ? `Доступ настроен · ${data.dfs.login}` : 'Доступ не настроен'}{data.dfs.env ? ' · задан в окружении' : ''}</p>
+    {#if form?.dfsError}<p class="mb-3 text-red-600">{form.dfsError}</p>{/if}
+    {#if form?.dfsSaved}<p class="mb-3 text-emerald-600">Сохранено</p>{/if}
+    {#if form?.dfsBalance !== undefined}<p class="mb-3">Доступ работает · баланс: ${Number(form.dfsBalance).toFixed(2)}</p>{/if}
+    {#if !data.dfs.env}
+      <form method="POST" action="?/dfsSave" use:enhance class="mb-3 flex flex-wrap gap-2">
+        <input class="input flex-1" name="login" autocomplete="off" placeholder="Логин API" aria-label="Логин API DataForSEO" value={data.dfs.login} required />
+        <input class="input flex-1" type="password" name="password" autocomplete="new-password" placeholder="Пароль API" aria-label="Пароль API DataForSEO" required />
+        <button class="btn btn-pri">Сохранить</button>
+      </form>
+    {/if}
+    <div class="flex gap-2">
+      {#if data.dfs.configured}<form method="POST" action="?/dfsTest" use:enhance><button class="btn btn-sec">Проверить доступ и баланс</button></form>{/if}
+      {#if data.dfs.configured && !data.dfs.env}<form method="POST" action="?/dfsClear" use:enhance><button class="btn btn-ghost">Удалить доступ</button></form>{/if}
+      <a class="btn btn-ghost" href="https://app.dataforseo.com/api-access" target="_blank" rel="noopener noreferrer">Где взять логин и пароль ↗</a>
+    </div>
+  </div>
   <div class="rounded border border-line bg-pane p-5">
     <h2 class="mb-2 font-semibold">NeuralIndexer · Inderixing</h2>
     <p class="mb-4 text-ink-2">Один API-ключ для всех доменов. Отправка страниц и карт сайта — кнопка «Индексация» на странице домена.</p>

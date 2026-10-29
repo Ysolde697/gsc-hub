@@ -12,7 +12,9 @@ export type ConfigKey =
   | 'MAGIC369_API_BASE'
   | 'BACKLINK_PROXY_URL'
   | 'BACKLINK_AUTO_ENABLED'
-  | 'NEURALINDEXER_API_TOKEN';
+  | 'NEURALINDEXER_API_TOKEN'
+  | 'DATAFORSEO_LOGIN'
+  | 'DATAFORSEO_PASSWORD';
 
 function envVal(key: ConfigKey): string | undefined {
   const v = process.env[key];
