@@ -12,9 +12,14 @@ type SortField = (typeof SORT_FIELDS)[number];
 type SortDir = 'asc' | 'desc';
 
 // Any integer day count is accepted, clamped to GSC's 16-month (480-day) window.
+// По умолчанию — 28 дней, как на Dashboard: переход между страницами не должен
+// менять период.
+const DEFAULT_DAYS = 28;
+
 function parseDays(raw: string | null): number {
+  if (raw === null || raw === '') return DEFAULT_DAYS;
   const n = Math.floor(Number(raw));
-  if (!Number.isFinite(n) || n < 1) return 1;
+  if (!Number.isFinite(n) || n < 1) return DEFAULT_DAYS;
   return Math.min(n, 480);
 }
 

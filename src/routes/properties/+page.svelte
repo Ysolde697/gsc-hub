@@ -57,7 +57,7 @@
   };
 
   const PULSE_OPTIONS = [30, 90, 180, 365, 480];
-  let pulseDays = $state(180);
+  let pulseDays = $state(30);
   let showPulseUpdates = $state(true);
   let showPulseEvents = $state(true);
   let pulseState = $state<
