@@ -42,7 +42,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     groups,
     selectedId: selected?.id ?? null,
     today: todayGroupName(),
-    items: selected ? listGroupItems(db(), selected.id) : [],
+    items: selected ? listGroupItems(db(), selected.id, 'recent') : [],
     overlaps: selected ? groupOverlaps(listGroupItems(db(), selected.id)) : [],
     knownSites: [...byHost.values()].sort((a, b) => a.host.localeCompare(b.host)),
     siteErrors: errors.map((e) => ({ account: e.accountEmail, reason: e.reason }))

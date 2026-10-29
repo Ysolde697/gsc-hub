@@ -120,10 +120,13 @@ export function removeGroupItemById(db: Db, groupId: number, itemId: number): vo
   db.prepare('DELETE FROM site_group_items WHERE group_id = ? AND id = ?').run(groupId, itemId);
 }
 
-export function listGroupItems(db: Db, groupId: number): GroupItem[] {
-  const rows = db
-    .prepare("SELECT * FROM site_group_items WHERE group_id = ? ORDER BY site_url, kind, impressions DESC, query")
-    .all(groupId) as Record<string, unknown>[];
+/**
+ * Строки группы. order: 'site' — по сайтам (для CSV исполнителю),
+ * 'recent' — новые сверху (страница группы: видно, что добавилось).
+ */
+export function listGroupItems(db: Db, groupId: number, order: 'site' | 'recent' = 'site'): GroupItem[] {
+  const by = order === 'recent' ? 'added_at DESC, id DESC' : 'site_url, kind, impressions DESC, query';
+  const rows = db.prepare(`SELECT * FROM site_group_items WHERE group_id = ? ORDER BY ${by}`).all(groupId) as Record<string, unknown>[];
   return rows.map(toItem);
 }
 
