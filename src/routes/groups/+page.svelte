@@ -1,4 +1,5 @@
 <script lang="ts">
+  import IntentBadge from '$lib/components/IntentBadge.svelte';
   import { enhance } from '$app/forms';
   import { siteHostname } from '$lib/utils/url-filters';
   import OtherSitesInline from '$lib/components/OtherSitesInline.svelte';
@@ -384,12 +385,13 @@
                         {:else}
                           <div class="mb-1 text-xs text-ink-3">{list.length} строк · {list.reduce((a, i) => a + i.qty, 0)} ссылок</div>
                           <table class="app-table rounded border border-line bg-pane">
-                            <thead><tr><th>Тип</th><th>Анкор</th><th>Страница</th><th class="num">Ссылок</th><th class="num">Pos</th><th class="num">Impr</th><th class="num">Clicks</th><th></th></tr></thead>
+                            <thead><tr><th>Ссылка</th><th>Анкор</th><th>Тип ключа</th><th>Страница</th><th class="num">Ссылок</th><th class="num">Pos</th><th class="num">Impr</th><th class="num">Clicks</th><th></th></tr></thead>
                             <tbody>
                               {#each list as it (it.id)}
                                 <tr>
                                   <td class="text-xs text-ink-3">{it.kind === 'naked' ? 'Безанкор' : 'Анкор'}</td>
                                   <td class="pii font-medium">{it.kind === 'naked' ? '—' : it.query}</td>
+                                  <td>{#if it.kind !== 'naked'}<IntentBadge query={it.query} page={it.page} />{/if}</td>
                                   <td class="max-w-md"><a class="pii break-all text-ink-3 hover:text-acc hover:underline" href={it.page} target="_blank" rel="noopener noreferrer">{it.page}</a></td>
                                   <td class="num">
                                     {#if group.fixedAt}
