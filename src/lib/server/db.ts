@@ -258,6 +258,21 @@ CREATE TABLE IF NOT EXISTS keyword_volumes (
   fetched_at INTEGER NOT NULL,
   PRIMARY KEY (query, location)
 );
+
+-- Нажатия кнопок на ваших сайтах (счётчик /c.js). Только суммы по дням:
+-- ни IP, ни cookie не храним. kind: submit — отправка формы заказа,
+-- button — кнопка, out — ссылка на другой сайт, link — обычная ссылка.
+CREATE TABLE IF NOT EXISTS button_clicks (
+  day    TEXT NOT NULL,
+  host   TEXT NOT NULL,
+  page   TEXT NOT NULL,
+  kind   TEXT NOT NULL,
+  label  TEXT NOT NULL,
+  target TEXT NOT NULL,
+  n      INTEGER NOT NULL,
+  PRIMARY KEY (day, host, page, kind, label, target)
+);
+CREATE INDEX IF NOT EXISTS idx_button_clicks_host_day ON button_clicks (host, day);
 `;
 
 export function openDb(path: string): Db {
