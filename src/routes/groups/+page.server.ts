@@ -60,7 +60,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     knownSites: [...byHost.values()].map(({ openRank: _r, sources, ...k }) => ({
         ...k,
         // Период как в Striking этого сайта (он запоминается для каждого сайта).
-        days: getSiteViewSettings(db(), k.host).days,
+        days: getSiteViewSettings(db(), k.open.siteUrl).days,
         sources: sources.sort((a, b) => b.rank - a.rank).map(({ rank: _x, ...src }) => src)
       })).sort((a, b) => a.host.localeCompare(b.host)),
     siteErrors: errors.map((e) => ({ account: e.accountEmail, reason: e.reason }))
