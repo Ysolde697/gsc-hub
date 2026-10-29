@@ -13,6 +13,7 @@ import {
   setAccountsInUse
 } from '../src/lib/server/accounts';
 import { listSitesForAllAccounts } from '../src/lib/server/google';
+import { createSiteGroup, setActiveSiteGroup } from '../src/lib/server/site-groups';
 import { gscCacheInvalidate } from '../src/lib/server/gsc-cache';
 
 const future = () => Math.floor(Date.now() / 1000) + 3600;
@@ -60,6 +61,13 @@ describe('выбор консолей', () => {
     expect(listReportAccounts(db)).toEqual([]);
     setAccountsInUse(db, ['c1', 'c2', 'c3', 'c4']);
     expect(listReportAccounts(db)).toHaveLength(4);
+  });
+
+  it('выбранная группа не включает снятые консоли', () => {
+    for (const id of ['c1', 'c2', 'c3']) add(db, id);
+    setAccountsInUse(db, ['c2']);
+    setActiveSiteGroup(db, createSiteGroup(db, '28-10-26'));
+    expect(listReportAccounts(db).map((a) => a.id)).toEqual(['c2']);
   });
 
   it('переподключение консоли не сбрасывает галочку', () => {
