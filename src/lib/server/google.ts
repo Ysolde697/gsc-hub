@@ -2,6 +2,7 @@ import type { Db } from './db';
 import { gscCached } from './gsc-cache';
 import { addCalendarDays, gscToday, completedDayRange, localToday, gscDayStartsAtLocal } from './gsc-calendar';
 import { INSPECT_LIMIT, mapSettledLimit } from './concurrency';
+import { siteCountries } from '$lib/utils/site-geo';
 import { getGoogleClientId, getGoogleClientSecret } from './config';
 import {
   type AccountRow,
@@ -1475,6 +1476,35 @@ export async function fetchQueryOwners(db: Db, days = 28): Promise<Map<string, Q
     const out = new Map<string, QueryOwner[]>();
     for (const [q, hosts] of byQuery) if (hosts.size > 1) out.set(q, [...hosts.values()].sort((a, b) => a.position - b.position));
     return out;
+  }, 60 * 60 * 1000);
+}
+
+/** Домен → его страны (см. siteCountries). Один запрос по странам на каждую property, кэш час. */
+export async function fetchSiteGeos(db: Db, days = 28): Promise<Map<string, string[]>> {
+  return gscCached(`geos:${days}`, async () => {
+    const accounts = listAccounts(db).filter((a) => a.status === 'active');
+    const perAccount = await Promise.allSettled(accounts.map((a) => listSitesForAccount(db, a)));
+    const pairs: { acc: AccountRow; site: SiteRow }[] = [];
+    perAccount.forEach((r, i) => {
+      if (r.status === 'fulfilled')
+        r.value.forEach((site) => {
+          if (site.permissionLevel !== 'siteUnverifiedUser') pairs.push({ acc: accounts[i], site });
+        });
+    });
+    const { startDate, endDate } = gscDateRange(days);
+    const perSite = await mapSettledLimit(pairs, ({ acc, site }) =>
+      searchAnalyticsQuery(db, acc, site.siteUrl, { startDate, endDate, dimensions: ['country'], rowLimit: 100 })
+    );
+    // У домена может быть две property — берём ту, где показов больше.
+    const best = new Map<string, { total: number; countries: string[] }>();
+    perSite.forEach((r, i) => {
+      if (r.status !== 'fulfilled') return;
+      const rows = r.value.map((x) => ({ country: x.keys[0] ?? '', impressions: x.impressions }));
+      const total = rows.reduce((t, x) => t + x.impressions, 0);
+      const host = hostKey(pairs[i].site.siteUrl);
+      if (total > (best.get(host)?.total ?? -1)) best.set(host, { total, countries: siteCountries(rows) });
+    });
+    return new Map([...best].map(([h, v]) => [h, v.countries]));
   }, 60 * 60 * 1000);
 }
 
