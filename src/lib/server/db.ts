@@ -261,7 +261,8 @@ CREATE TABLE IF NOT EXISTS keyword_volumes (
 
 -- Нажатия кнопок на ваших сайтах (счётчик /c.js). Только суммы по дням:
 -- ни IP, ни cookie не храним. kind: submit — отправка формы заказа,
--- button — кнопка, out — ссылка на другой сайт, link — обычная ссылка.
+-- button — кнопка, out — ссылка на другой сайт, link — обычная ссылка,
+-- view — просмотр страницы.
 CREATE TABLE IF NOT EXISTS button_clicks (
   day    TEXT NOT NULL,
   host   TEXT NOT NULL,

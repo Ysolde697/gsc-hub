@@ -7,7 +7,7 @@
 
   let { data } = $props();
   const PERIODS: [string, string][] = [['today', 'Сегодня'], ['yesterday', 'Вчера'], ['7', '7 дней'], ['28', '28 дней'], ['90', '3 мес'], ['180', '6 мес'], ['480', '16 мес']];
-  const KIND: Record<string, string> = { submit: 'Отправка формы', button: 'Кнопка', out: 'Ссылка на другой сайт', link: 'Обычная ссылка' };
+  const KIND: Record<string, string> = { view: 'Просмотр', submit: 'Отправка формы', button: 'Кнопка', out: 'Ссылка на другой сайт', link: 'Обычная ссылка' };
   const snippet = $derived(`<script async src="${data.origin}/c.js"><\/script>`);
   let copied = $state(false);
   async function copy() {
@@ -29,13 +29,14 @@
     open = n;
   };
 
-  type Site = { host: string; gsc: number; buttons: number; submits: number; rateSubmit: number | null; rateButton: number | null };
+  type Site = { host: string; impr: number; gsc: number; views: number; buttons: number; submits: number; rateSubmit: number | null; rateButton: number | null };
   const sitesRaw = $derived.by(() => {
     const m = new Map<string, Site>();
-    const get = (h: string) => m.get(h) ?? (m.set(h, { host: h, gsc: data.gsc[h] ?? 0, buttons: 0, submits: 0, rateSubmit: null, rateButton: null }), m.get(h)!);
+    const get = (h: string) => m.get(h) ?? (m.set(h, { host: h, impr: data.gscImpr[h] ?? 0, gsc: data.gsc[h] ?? 0, views: 0, buttons: 0, submits: 0, rateSubmit: null, rateButton: null }), m.get(h)!);
     for (const r of data.clicks) {
       const s = get(r.host);
-      if (r.kind === 'submit') s.submits += r.n;
+      if (r.kind === 'view') s.views += r.n;
+      else if (r.kind === 'submit') s.submits += r.n;
       else if (r.kind === 'button' || r.kind === 'out') s.buttons += r.n;
     }
     for (const h of Object.keys(data.lastSeen)) get(h);
@@ -45,19 +46,19 @@
     }
     return [...m.values()];
   });
-  type K = 'host' | 'gsc' | 'buttons' | 'submits' | 'rateButton' | 'rateSubmit';
-  const sort = new TableSort<K>('submits', -1, ['gsc', 'buttons', 'submits', 'rateButton', 'rateSubmit']);
+  type K = 'host' | 'impr' | 'gsc' | 'views' | 'buttons' | 'submits' | 'rateButton' | 'rateSubmit';
+  const sort = new TableSort<K>('submits', -1, ['impr', 'gsc', 'views', 'buttons', 'submits', 'rateButton', 'rateSubmit']);
   const sites = $derived(sort.apply(sitesRaw, (s, k) => s[k]));
 
   type DK = 'label' | 'kind' | 'page' | 'target' | 'n';
   const dsort = new TableSort<DK>('n', -1, ['n']);
-  const detail = (h: string) => dsort.apply(data.clicks.filter((r) => r.host === h && (withLinks || r.kind !== 'link')), (r, k) => r[k]);
+  const detail = (h: string) => dsort.apply(data.clicks.filter((r) => r.host === h && r.kind !== 'view' && (withLinks || r.kind !== 'link')), (r, k) => r[k]);
 
   const fmt = (n: number) => n.toLocaleString('ru-RU');
   const pct = (v: number | null) => (v === null ? '—' : `${(v * 100).toFixed(1)}%`);
   const fmtDay = (iso: string) => iso.split('-').reverse().join('.');
   const periodLabel = $derived(data.period.startDate === data.period.endDate ? fmtDay(data.period.startDate) : `${fmtDay(data.period.startDate)} – ${fmtDay(data.period.endDate)}`);
-  const totals = $derived(sitesRaw.reduce((a, s) => ({ b: a.b + s.buttons, s: a.s + s.submits }), { b: 0, s: 0 }));
+  const totals = $derived(sitesRaw.reduce((a, s) => ({ v: a.v + s.views, b: a.b + s.buttons, s: a.s + s.submits }), { v: 0, b: 0, s: 0 }));
 </script>
 
 <svelte:head><title>Кнопки · GSC Hub</title></svelte:head>
@@ -92,7 +93,7 @@
         {/each}
       </div>
       <span class="text-xs text-ink-3">{periodLabel}</span>
-      <span class="text-xs text-ink-3">· нажатий кнопок {fmt(totals.b)} · отправок формы {fmt(totals.s)}</span>
+      <span class="text-xs text-ink-3">· просмотров {fmt(totals.v)} · нажатий кнопок {fmt(totals.b)} · отправок формы {fmt(totals.s)}</span>
       <label class="ml-auto flex items-center gap-1 text-xs text-ink-2"><input type="checkbox" bind:checked={withLinks} /> показывать и обычные ссылки</label>
     </div>
 
@@ -104,7 +105,9 @@
           <thead>
             <tr>
               <SortTh {sort} k="host" label="Сайт" />
+              <SortTh {sort} k="impr" label="Показы в Google" num title="Search Console за тот же период: сколько раз сайт показали в поиске" />
               <SortTh {sort} k="gsc" label="Клики из Google" num title="Search Console за тот же период" />
+              <SortTh {sort} k="views" label="Просмотры страниц" num title="Сколько раз открыли страницы сайта (счётчик; считается с момента обновления скрипта)" />
               <SortTh {sort} k="buttons" label="Нажали кнопку" num title="Кнопки и ссылки на другие сайты" />
               <SortTh {sort} k="rateButton" label="% от кликов" num title="Нажали кнопку / клики из Google" />
               <SortTh {sort} k="submits" label="Отправили форму" num title="Отправка формы заказа (Continue to checkout и т.п.)" />
@@ -120,7 +123,9 @@
                     {s.host}
                   </span>
                 </td>
+                <td class="num app-num">{fmt(s.impr)}</td>
                 <td class="num app-num">{fmt(s.gsc)}</td>
+                <td class="num app-num">{fmt(s.views)}</td>
                 <td class="num app-num">{fmt(s.buttons)}</td>
                 <td class="num app-num">{pct(s.rateButton)}</td>
                 <td class="num app-num font-semibold">{fmt(s.submits)}</td>
@@ -129,7 +134,7 @@
               {#if open.has(s.host)}
                 {@const list = detail(s.host)}
                 <tr class="bg-sunk hover:bg-sunk">
-                  <td colspan="6" class="px-3 py-2">
+                  <td colspan="8" class="px-3 py-2">
                     {#if list.length === 0}
                       <p class="text-xs text-ink-3">За этот период нажатий нет.</p>
                     {:else}

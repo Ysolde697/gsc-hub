@@ -3,7 +3,7 @@
 import type { Db } from './db';
 import { localToday } from './gsc-calendar';
 
-export const CLICK_KINDS = ['submit', 'button', 'out', 'link'] as const;
+export const CLICK_KINDS = ['submit', 'button', 'out', 'link', 'view'] as const;
 export type ClickKind = (typeof CLICK_KINDS)[number];
 
 export interface ClickEvent {
@@ -105,6 +105,8 @@ export function counterScript(origin: string): string {
     var u = E + '?k=' + k + '&h=' + encodeURIComponent(location.hostname) + '&p=' + encodeURIComponent(location.pathname) + '&l=' + encodeURIComponent((l || '').trim().slice(0, 80)) + '&t=' + encodeURIComponent((t || '').slice(0, 300));
     try { fetch(u, { mode: 'no-cors', keepalive: true, credentials: 'omit' }); } catch (e) { new Image().src = u; }
   }
+  // Просмотр страницы — один раз при открытии.
+  send('view', '', '');
   function label(el) { return el.getAttribute('data-track') || el.getAttribute('aria-label') || el.innerText || el.value || el.title || ''; }
   function where(href) {
     try { var u = new URL(href, location.href); return u.host === location.host ? u.pathname + u.search + u.hash : u.host + u.pathname; } catch (e) { return href || ''; }
