@@ -26,6 +26,10 @@
     onadd: (row: Row & { qty: number }) => Promise<unknown> | unknown;
   } = $props();
 
+  // Период по умолчанию — как в Striking этого сайта; можно переключить тут же.
+  // svelte-ignore state_referenced_locally
+  let period = $state(days);
+  const PERIODS: [number, string][] = [[7, '7 дн'], [28, '28 дн'], [90, '3 мес'], [180, '6 мес'], [480, '16 мес']];
   let rows = $state<Row[]>([]);
   let marks = $state<Record<string, Mark[]>>({});
   let loading = $state(true);
@@ -47,7 +51,7 @@
       // ключ+страница сливаем, оставляя строку с бо́льшими показами.
       const results = await Promise.all(
         sources.map(async (src) => {
-          const r = await fetch(`/properties/${encodeURIComponent(src.siteUrl)}/analytics?acc=${encodeURIComponent(src.accountId)}&days=${days}&posMax=0&minImpr=1`);
+          const r = await fetch(`/properties/${encodeURIComponent(src.siteUrl)}/analytics?acc=${encodeURIComponent(src.accountId)}&days=${period}&posMax=0&minImpr=1`);
           if (!r.ok) throw new Error(`HTTP ${r.status}`);
           return ((await r.json()).striking ?? []).map((x: Omit<Row, 'siteUrl'>) => ({ ...x, siteUrl: src.siteUrl }));
         }).map((p) => p.then((v) => ({ ok: true as const, v }), (e: Error) => ({ ok: false as const, e })))
@@ -122,7 +126,12 @@
 
 <div class="mt-3">
   <div class="mb-1 flex flex-wrap items-center gap-3 text-xs">
-    <span class="font-semibold text-ink-2">Все ключи сайта · {days} дней</span>
+    <span class="font-semibold text-ink-2">Все ключи сайта</span>
+    <span class="inline-flex overflow-hidden rounded border border-line">
+      {#each [...PERIODS, ...(PERIODS.some(([d]) => d === days) ? [] : [[days, `${days} дн`] as [number, string]])] as [d, label] (d)}
+        <button type="button" class="px-2 py-0.5 {period === d ? 'bg-acc text-white' : 'bg-pane text-ink-2 hover:bg-acc-t'}" disabled={loading} onclick={() => { period = d; load(); }}>{label}</button>
+      {/each}
+    </span>
     {#if !loading && !err}<span class="text-ink-3">{rows.length} ключей{sources.length > 1 ? ` · из ${sources.length - failed} из ${sources.length} консолей/property` : ''}</span>{/if}
     <label class="flex items-center gap-1 text-ink-2"><input type="checkbox" bind:checked={onlyNew} /> скрыть уже добавленные в эту группу</label>
   </div>

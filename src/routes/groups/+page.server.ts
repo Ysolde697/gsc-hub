@@ -16,6 +16,7 @@ import {
 } from '$lib/server/site-groups';
 import { listGroupItems, setGroupFixed, removeGroupItemById, todayGroupName, addNakedItem, setItemQtyById, groupOverlaps } from '$lib/server/group-items';
 import { siteHostname } from '$lib/utils/url-filters';
+import { getSiteViewSettings } from '$lib/server/site-view-settings';
 
 export const load: PageServerLoad = async ({ locals, url }) => {
   requireAdmin(locals);
@@ -58,6 +59,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     overlaps: selected ? groupOverlaps(listGroupItems(db(), selected.id)) : [],
     knownSites: [...byHost.values()].map(({ openRank: _r, sources, ...k }) => ({
         ...k,
+        // Период как в Striking этого сайта (он запоминается для каждого сайта).
+        days: getSiteViewSettings(db(), k.host).days,
         sources: sources.sort((a, b) => b.rank - a.rank).map(({ rank: _x, ...src }) => src)
       })).sort((a, b) => a.host.localeCompare(b.host)),
     siteErrors: errors.map((e) => ({ account: e.accountEmail, reason: e.reason }))

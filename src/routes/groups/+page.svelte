@@ -406,6 +406,7 @@
                           {@const k = knownByHost.get(h)!}
                           <SiteKeysPanel
                             sources={k.sources}
+                            days={k.days}
                             groupId={group.id}
                             fixed={!!group.fixedAt}
                             onadd={(r) => itemsPost({ action: 'add', groupId: group.id, item: { siteUrl: r.siteUrl, query: r.query, page: r.page, position: r.position, impressions: r.impressions, clicks: r.clicks, ctr: r.ctr, qty: r.qty } })}
