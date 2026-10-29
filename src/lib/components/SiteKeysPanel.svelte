@@ -43,6 +43,9 @@
 
   const key = (r: { page: string; query: string }) => `${r.page}\n${r.query}`;
   const vols = new Volumes();
+  // Отмеченные ключи — для проверки частотности в DataForSEO.
+  let picked = $state<Set<string>>(new Set());
+  const pickToggle = (q: string) => { const n = new Set(picked); if (n.has(q)) n.delete(q); else n.add(q); picked = n; };
   const site = $derived(sources[0]?.siteUrl ?? '');
 
   async function load() {
@@ -128,8 +131,12 @@
     }
   }
   const fmt = (n: number) => n.toLocaleString('ru-RU');
+  const visibleQs = $derived([...new Set(shown.map((r) => r.query))]);
+  const pickedQs = $derived(visibleQs.filter((q) => picked.has(q)));
+  const allPicked = $derived(visibleQs.length > 0 && pickedQs.length === visibleQs.length);
+  // Отмеченные галочками, а если ничего не отмечено — все в таблице.
   function checkShown() {
-    const qs = [...new Set(shown.map((r) => r.query))];
+    const qs = pickedQs.length ? pickedQs : visibleQs;
     if (!qs.length) return;
     if (!confirm(`Проверить частотность ${qs.length} ключей в DataForSEO? Это платно (несколько центов за пачку до 1000 ключей), уже проверенные ключи повторно не оплачиваются.`)) return;
     vols.check(site, qs);
@@ -147,7 +154,8 @@
     {#if !loading && !err}<span class="text-ink-3">{rows.length} ключей{sources.length > 1 ? ` · из ${sources.length - failed} из ${sources.length} консолей/property` : ''}</span>{/if}
     <label class="flex items-center gap-1 text-ink-2"><input type="checkbox" bind:checked={onlyNew} /> скрыть уже добавленные в эту группу</label>
     {#if !loading && !err && shown.length}
-      <button type="button" class="btn btn-sec btn-sm" disabled={vols.checking} title="Точная частотность от Google Ads по ключам в таблице" onclick={checkShown}>{vols.checking ? 'Проверяю…' : `Частотность в DataForSEO (${new Set(shown.map((r) => r.query)).size})`}</button>
+      <button type="button" class="btn btn-sec btn-sm" disabled={vols.checking} title="Точная частотность от Google Ads по ключам в таблице" onclick={checkShown}>{vols.checking ? 'Проверяю…' : pickedQs.length ? `Частотность отмеченных в DataForSEO (${pickedQs.length})` : `Частотность в DataForSEO — все (${visibleQs.length})`}</button>
+      {#if pickedQs.length}<button type="button" class="btn btn-ghost btn-sm" onclick={() => (picked = new Set())}>Снять отметки</button>{/if}
     {/if}
   </div>
   {#if vols.error}<p class="mb-1 text-xs text-bad">{vols.error}{#if !vols.configured} — <a class="text-acc underline" href="/settings/integrations">раздел «Сервисы»</a>{/if}</p>{/if}
@@ -163,6 +171,7 @@
       <table class="app-table">
         <thead>
           <tr>
+            <th class="w-8"><input type="checkbox" checked={allPicked} aria-label="Отметить все ключи" onchange={() => (picked = allPicked ? new Set() : new Set(visibleQs))} /></th>
             <SortTh {sort} k="query" label="Ключ" />
             <SortTh {sort} k="intent" label="Тип" />
             <SortTh {sort} k="page" label="Страница" />
@@ -179,7 +188,8 @@
           {#each shown as r (key(r))}
             {@const mine = inThis(r)}
             {@const last = lastOther(r)}
-            <tr>
+            <tr class:is-selected={picked.has(r.query)}>
+              <td><input type="checkbox" checked={picked.has(r.query)} aria-label="Отметить ключ {r.query}" onchange={() => pickToggle(r.query)} /></td>
               <td class="pii font-medium">{r.query}</td>
               <td><IntentBadge query={r.query} page={r.page} /></td>
               <td class="min-w-[14rem] max-w-sm"><a class="pii break-all text-ink-3 hover:text-acc hover:underline" href={r.page} target="_blank" rel="noopener noreferrer">{r.page}</a></td>
