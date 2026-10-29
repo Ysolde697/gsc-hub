@@ -351,9 +351,26 @@
                       {/if}
                     </td>
                     <td class="text-right">
-                      {#if openHref(h)}
-                        <a class="btn btn-pri btn-sm" href={openHref(h)}>Открыть → Striking</a>
-                      {/if}
+                      <span class="inline-flex items-center gap-1">
+                        {#if openHref(h)}
+                          <a class="btn btn-pri btn-sm" href={openHref(h)}>Открыть → Striking</a>
+                        {/if}
+                        {#if !group.fixedAt}
+                          <form
+                            method="POST"
+                            action="?/removeHost"
+                            use:enhance={({ cancel }) => {
+                              const n = itemsByHost.get(h) ?? 0;
+                              if (!confirm(`Убрать ${h} из группы «${group.name}»?${n ? ` Его ссылки в ТЗ (${n} шт) тоже уберутся.` : ''}`)) cancel();
+                              return async ({ update }) => update({ reset: false });
+                            }}
+                          >
+                            <input type="hidden" name="id" value={group.id} />
+                            <input type="hidden" name="host" value={h} />
+                            <button class="btn btn-ghost btn-sm text-bad" title="Убрать сайт из группы">×</button>
+                          </form>
+                        {/if}
+                      </span>
                     </td>
                   </tr>
                   {#if openHosts.has(h)}

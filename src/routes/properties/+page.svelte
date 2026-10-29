@@ -89,6 +89,34 @@
     loadPulse(pulseDays);
   });
 
+  // День над графиком: «Сегодня» (по Германии) или «Вчера» — свежие цифры,
+  // которых ещё нет в графике (там только завершённые дни).
+  type DayData = { date: string; totals: { clicks: number; impressions: number; ctr: number }; pending: boolean; startsAt: string | null; partial: boolean };
+  let pulseDay = $state<'today' | 'yesterday'>('today');
+  let dayState = $state<{ kind: 'loading' } | { kind: 'error' } | { kind: 'loaded'; data: DayData }>({ kind: 'loading' });
+  const dayCache = new Map<string, DayData>();
+  async function loadDay(day: 'today' | 'yesterday') {
+    const hit = dayCache.get(day);
+    if (hit) {
+      dayState = { kind: 'loaded', data: hit };
+      return;
+    }
+    dayState = { kind: 'loading' };
+    try {
+      const r = await fetch(`/dashboard/today?day=${day}`);
+      if (!r.ok) throw new Error();
+      const d: DayData = await r.json();
+      dayCache.set(day, d);
+      if (pulseDay === day) dayState = { kind: 'loaded', data: d };
+    } catch {
+      if (pulseDay === day) dayState = { kind: 'error' };
+    }
+  }
+  $effect(() => {
+    loadDay(pulseDay);
+  });
+  const fmtDay = (iso: string) => iso.split('-').reverse().join('.');
+
   const STORAGE_KEY = 'gsc-hub:hidden-sites';
 
   type SiteWithSummary = (typeof data.sites)[number];
@@ -1094,6 +1122,28 @@
   <div class="desk">
     <!-- Portfolio pulse — all domains combined, own period switcher, Google update bands. -->
     <section class="pane">
+      <div class="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-line px-3 py-2">
+        <div class="app-segmented" aria-label="День">
+          <button type="button" class:is-active={pulseDay === 'today'} onclick={() => (pulseDay = 'today')}>Сегодня</button>
+          <button type="button" class:is-active={pulseDay === 'yesterday'} onclick={() => (pulseDay = 'yesterday')}>Вчера</button>
+        </div>
+        {#if dayState.kind === 'loading'}
+          <span class="loading text-xs">Загружаю…</span>
+        {:else if dayState.kind === 'error'}
+          <span class="text-xs text-err">Не загрузилось <button type="button" class="btn btn-ghost btn-sm" onclick={() => { dayCache.delete(pulseDay); loadDay(pulseDay); }}>Повторить</button></span>
+        {:else}
+          {@const d = dayState.data}
+          <span class="text-sm font-semibold text-ink">{fmtDay(d.date)}</span>
+          {#if d.pending}
+            <span class="text-xs text-ink-3">Google ещё не начал этот день{d.startsAt ? ` — начнёт в ${d.startsAt}` : ''}</span>
+          {:else}
+            <div class="stat border-l-0 pl-0"><span class="stat-label">Impressions</span><span class="stat-value">{fmtNum(d.totals.impressions)}</span></div>
+            <div class="stat"><span class="stat-label">Clicks</span><span class="stat-value">{fmtNum(d.totals.clicks)}</span></div>
+            <div class="stat"><span class="stat-label">CTR</span><span class="stat-value">{fmtCtr(d.totals.ctr)}</span></div>
+            <span class="text-xs text-ink-3">данные за день ещё обновляются{d.partial ? ' · часть сайтов не ответила' : ''}</span>
+          {/if}
+        {/if}
+      </div>
       <div class="pane-head">
         <span>Portfolio pulse <span class="aside ml-1 text-ink-3">all domains combined</span></span>
         <div class="app-segmented normal-case tracking-normal" aria-label="Pulse period">

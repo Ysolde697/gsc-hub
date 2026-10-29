@@ -7,7 +7,7 @@ import { requireAdmin } from '$lib/server/guard';
 // Loaded after the page renders rather than with it: today costs one request
 // per property, and the dashboard should not wait on a number that is still
 // changing.
-export const GET: RequestHandler = async ({ locals }) => {
+export const GET: RequestHandler = async ({ locals, url }) => {
   requireAdmin(locals);
-  return json(await fetchTodayTotals(db()));
+  return json(await fetchTodayTotals(db(), url.searchParams.get('day') === 'yesterday' ? 'yesterday' : 'today'));
 };

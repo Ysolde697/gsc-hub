@@ -10,6 +10,7 @@ import {
   renameSiteGroup,
   deleteSiteGroup,
   setSiteGroupHosts,
+  removeHostFromGroup,
   getSiteGroup,
   parseHostList,
   setHostDone
@@ -161,6 +162,21 @@ export const actions: Actions = {
     changed();
   },
   // Состав целиком: отмеченные галочками домены плюс вставленный текстом список.
+  removeHost: async ({ request, locals }) => {
+    requireAdmin(locals);
+    const form = await request.formData();
+    const id = groupId(form);
+    const g = id ? getSiteGroup(db(), id) : undefined;
+    if (!id || !g) return fail(400, { error: 'Нет группы' });
+    if (g.fixedAt) return fail(400, { error: 'Группа зафиксирована — сначала откройте её для правок' });
+    try {
+      removeHostFromGroup(db(), id, String(form.get('host') ?? ''));
+    } catch (e) {
+      return fail(400, { error: (e as Error).message });
+    }
+    changed();
+    return { saved: id };
+  },
   hosts: async ({ request, locals }) => {
     requireAdmin(locals);
     const form = await request.formData();

@@ -689,9 +689,10 @@ export interface TodayTotals {
 
 // Today on its own, deliberately uncompared: the day is still accumulating, so
 // the only honest thing to do with the number is show it.
-export async function fetchTodayTotals(db: Db): Promise<TodayTotals> {
+export async function fetchTodayTotals(db: Db, day: 'today' | 'yesterday' = 'today'): Promise<TodayTotals> {
   // «Сегодня» — по часовому поясу владельца (Германия), а не по Калифорнии.
-  const date = localToday();
+  // «Вчера» — день перед ним, тоже со свежими (ещё не финальными) данными.
+  const date = day === 'yesterday' ? addCalendarDays(localToday(), -1) : localToday();
   const pending = gscToday() < date;
   const accounts = listReportAccounts(db);
   const errors: DailyBreakdownFanOut['errors'] = [];

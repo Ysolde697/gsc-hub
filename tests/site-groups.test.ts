@@ -16,8 +16,10 @@ import {
   listSiteGroups,
   setActiveSiteGroup,
   activeGroupHosts,
-  siteInHosts
+  siteInHosts,
+  removeHostFromGroup
 } from '../src/lib/server/site-groups';
+import { addGroupItem, listGroupItems } from '../src/lib/server/group-items';
 
 describe('normalizeHost / parseHostList', () => {
   it('понимает домен, адрес и sc-domain', () => {
@@ -122,5 +124,30 @@ describe('группы сайтов', () => {
     // Без группы — все сайты отмеченных консолей.
     setActiveSiteGroup(db, null);
     expect(await urls()).toEqual(['https://b.com/', 'https://c.com/', 'sc-domain:a.com']);
+  });
+});
+
+describe('removeHostFromGroup', () => {
+  let dir: string;
+  let db: Db;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'gsc-hub-'));
+    db = openDb(join(dir, 'test.db'));
+  });
+  afterEach(() => {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('убирает сайт и его ключи, остальные не трогает', () => {
+    const g = createSiteGroup(db, '29-10-26');
+    setSiteGroupHosts(db, g, ['a.com', 'b.com']);
+    const it0 = { position: 10, impressions: 5, clicks: 0, ctr: 0, qty: 3 };
+    addGroupItem(db, g, { siteUrl: 'sc-domain:a.com', query: 'x', page: 'https://a.com/', ...it0 });
+    addGroupItem(db, g, { siteUrl: 'https://www.a.com/', query: 'y', page: 'https://www.a.com/p', ...it0 });
+    addGroupItem(db, g, { siteUrl: 'https://b.com/', query: 'x', page: 'https://b.com/', ...it0 });
+    expect(removeHostFromGroup(db, g, 'a.com')).toBe(2);
+    expect(listSiteGroups(db).find((x) => x.id === g)!.hosts).toEqual(['b.com']);
+    expect(listGroupItems(db, g).map((i) => i.siteUrl)).toEqual(['https://b.com/']);
   });
 });

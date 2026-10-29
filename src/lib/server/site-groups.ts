@@ -179,3 +179,17 @@ export function siteInHosts(siteUrl: string, hosts: Set<string>): boolean {
     return false;
   }
 }
+
+/** Убрать один сайт из группы вместе с его ключами в ТЗ этой группы. Возвращает, сколько ключей убрано. */
+export function removeHostFromGroup(db: Db, id: number, host: string): number {
+  const h = normalizeHost(host);
+  if (!h) throw new Error('Не похоже на домен');
+  const items = db.prepare('SELECT id, site_url FROM site_group_items WHERE group_id = ?').all(id) as { id: number; site_url: string }[];
+  const mine = items.filter((i) => siteInHosts(i.site_url, new Set([h])));
+  const delItem = db.prepare('DELETE FROM site_group_items WHERE id = ?');
+  db.transaction(() => {
+    for (const i of mine) delItem.run(i.id);
+    db.prepare('DELETE FROM site_group_hosts WHERE group_id = ? AND host = ?').run(id, h);
+  })();
+  return mine.length;
+}
