@@ -21,7 +21,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   requireAdmin(locals);
   // Все сайты всех консолей, без фильтров: выбирать в группу можно любой.
   const { sites, errors } = await listAllKnownSites(db());
-  const byHost = new Map<string, { host: string; accounts: string[]; open: { siteUrl: string; accountId: string } }>();
+  const byHost = new Map<string, { host: string; accounts: string[]; open: { siteUrl: string; accountId: string }; openRank: number; sources: { siteUrl: string; accountId: string; rank: number }[] }>();
   for (const s of sites) {
     let host: string;
     try {
@@ -29,8 +29,20 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     } catch {
       continue;
     }
-    // Ссылка «Открыть» ведёт на первую найденную property этого домена.
-    const row = byHost.get(host) ?? { host, accounts: [], open: { siteUrl: s.siteUrl, accountId: s.accountId } };
+    // Ссылка «Открыть» и «Все ключи сайта» берут лучшую property домена:
+    // подтверждённая sc-domain: (весь домен) > подтверждённая https:// > любая.
+    // Иначе у сайта с двумя property бралась бы почти пустая.
+    const rank = (x: { siteUrl: string; permissionLevel: string }) =>
+      (x.permissionLevel === 'siteUnverifiedUser' ? 0 : 2) + (x.siteUrl.startsWith('sc-domain:') ? 1 : 0);
+    const row = byHost.get(host) ?? { host, accounts: [], open: { siteUrl: s.siteUrl, accountId: s.accountId }, openRank: -1, sources: [] };
+    // Все property домена во всех консолях: «Все ключи сайта» собирает ключи из каждой,
+    // иначе данные из другой консоли (или другой property) терялись.
+    if (!row.sources.some((x) => x.siteUrl === s.siteUrl && x.accountId === s.accountId))
+      row.sources.push({ siteUrl: s.siteUrl, accountId: s.accountId, rank: rank(s) });
+    if (rank(s) > row.openRank) {
+      row.open = { siteUrl: s.siteUrl, accountId: s.accountId };
+      row.openRank = rank(s);
+    }
     const who = s.accountLabel || s.accountEmail;
     if (!row.accounts.includes(who)) row.accounts.push(who);
     byHost.set(host, row);
@@ -44,7 +56,10 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     today: todayGroupName(),
     items: selected ? listGroupItems(db(), selected.id, 'recent') : [],
     overlaps: selected ? groupOverlaps(listGroupItems(db(), selected.id)) : [],
-    knownSites: [...byHost.values()].sort((a, b) => a.host.localeCompare(b.host)),
+    knownSites: [...byHost.values()].map(({ openRank: _r, sources, ...k }) => ({
+        ...k,
+        sources: sources.sort((a, b) => b.rank - a.rank).map(({ rank: _x, ...src }) => src)
+      })).sort((a, b) => a.host.localeCompare(b.host)),
     siteErrors: errors.map((e) => ({ account: e.accountEmail, reason: e.reason }))
   };
 };

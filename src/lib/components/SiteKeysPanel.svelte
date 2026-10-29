@@ -8,28 +8,29 @@
   import { TableSort } from '$lib/table-sort.svelte';
   import { classifyIntent } from '$lib/utils/intent';
 
-  type Row = { query: string; page: string; position: number; impressions: number; clicks: number; ctr: number };
+  type Row = { query: string; page: string; position: number; impressions: number; clicks: number; ctr: number; siteUrl: string };
+  type Source = { siteUrl: string; accountId: string };
   type Mark = { groupId: number; name: string; qty: number; at: number };
   let {
-    siteUrl,
-    accountId,
+    sources,
     groupId,
     fixed = false,
     days = 28,
     onadd
   }: {
-    siteUrl: string;
-    accountId: string;
+    /** Все property этого домена во всех консолях — ключи собираются из каждой. */
+    sources: Source[];
     groupId: number;
     fixed?: boolean;
     days?: number;
-    onadd: (row: Row & { siteUrl: string; qty: number }) => Promise<unknown> | unknown;
+    onadd: (row: Row & { qty: number }) => Promise<unknown> | unknown;
   } = $props();
 
   let rows = $state<Row[]>([]);
   let marks = $state<Record<string, Mark[]>>({});
   let loading = $state(true);
   let err = $state<string | null>(null);
+  let failed = $state(0);
   let onlyNew = $state(true);
   let drafts = $state<Record<string, number>>({});
   let busy = $state<Set<string>>(new Set());
@@ -39,15 +40,37 @@
   async function load() {
     loading = true;
     err = null;
+    failed = 0;
     try {
-      const base = `/properties/${encodeURIComponent(siteUrl)}`;
-      const [a, m] = await Promise.all([
-        fetch(`${base}/analytics?acc=${encodeURIComponent(accountId)}&days=${days}&posMax=0&minImpr=1`),
-        fetch(`/groups/items?site=${encodeURIComponent(siteUrl)}`)
-      ]);
-      if (!a.ok) throw new Error(`HTTP ${a.status}`);
-      rows = (await a.json()).striking ?? [];
-      marks = m.ok ? ((await m.json()).marks ?? {}) : {};
+      // Одна и та же статистика может лежать в разных консолях и property
+      // (sc-domain: и https://). Берём из всех, что ответили; одинаковые
+      // ключ+страница сливаем, оставляя строку с бо́льшими показами.
+      const results = await Promise.all(
+        sources.map(async (src) => {
+          const r = await fetch(`/properties/${encodeURIComponent(src.siteUrl)}/analytics?acc=${encodeURIComponent(src.accountId)}&days=${days}&posMax=0&minImpr=1`);
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          return ((await r.json()).striking ?? []).map((x: Omit<Row, 'siteUrl'>) => ({ ...x, siteUrl: src.siteUrl }));
+        }).map((p) => p.then((v) => ({ ok: true as const, v }), (e: Error) => ({ ok: false as const, e })))
+      );
+      const merged = new Map<string, Row>();
+      for (const res of results) {
+        if (!res.ok) continue;
+        for (const r of res.v as Row[]) {
+          const prev = merged.get(key(r));
+          if (!prev || r.impressions > prev.impressions) merged.set(key(r), r);
+        }
+      }
+      failed = results.filter((x) => !x.ok).length;
+      if (failed === results.length && results.length) throw (results[0] as { e: Error }).e;
+      rows = [...merged.values()];
+      const sites = [...new Set(sources.map((x) => x.siteUrl))];
+      const ms = await Promise.all(
+        sites.map((u) => fetch(`/groups/items?site=${encodeURIComponent(u)}`).then((m) => (m.ok ? m.json() : { marks: {} })).catch(() => ({ marks: {} })))
+      );
+      const all: Record<string, Mark[]> = {};
+      for (const m of ms) for (const [k, v] of Object.entries((m.marks ?? {}) as Record<string, Mark[]>)) (all[k] ??= []).push(...v);
+      for (const v of Object.values(all)) v.sort((a, b) => a.at - b.at);
+      marks = all;
     } catch (e) {
       err = (e as Error).message;
     } finally {
@@ -83,7 +106,7 @@
     if (!qty) return;
     busy = new Set(busy).add(key(r));
     try {
-      await onadd({ ...r, siteUrl, qty });
+      await onadd({ ...r, qty });
       marks = { ...marks, [key(r)]: [...(marks[key(r)] ?? []), { groupId, name: '', qty, at: Date.now() }] };
       const d = { ...drafts };
       delete d[key(r)];
@@ -100,7 +123,7 @@
 <div class="mt-3">
   <div class="mb-1 flex flex-wrap items-center gap-3 text-xs">
     <span class="font-semibold text-ink-2">Все ключи сайта · {days} дней</span>
-    {#if !loading && !err}<span class="text-ink-3">{rows.length} ключей</span>{/if}
+    {#if !loading && !err}<span class="text-ink-3">{rows.length} ключей{sources.length > 1 ? ` · из ${sources.length - failed} из ${sources.length} консолей/property` : ''}</span>{/if}
     <label class="flex items-center gap-1 text-ink-2"><input type="checkbox" bind:checked={onlyNew} /> скрыть уже добавленные в эту группу</label>
   </div>
   {#if loading}

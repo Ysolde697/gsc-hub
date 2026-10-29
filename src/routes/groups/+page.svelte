@@ -405,8 +405,7 @@
                         {#if knownByHost.get(h)}
                           {@const k = knownByHost.get(h)!}
                           <SiteKeysPanel
-                            siteUrl={k.open.siteUrl}
-                            accountId={k.open.accountId}
+                            sources={k.sources}
                             groupId={group.id}
                             fixed={!!group.fixedAt}
                             onadd={(r) => itemsPost({ action: 'add', groupId: group.id, item: { siteUrl: r.siteUrl, query: r.query, page: r.page, position: r.position, impressions: r.impressions, clicks: r.clicks, ctr: r.ctr, qty: r.qty } })}
