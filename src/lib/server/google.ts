@@ -675,6 +675,8 @@ export interface TodayTotals {
   /** The date these totals are for, in Search Console's timezone. */
   date: string;
   totals: PeriodTotals;
+  /** Из каких сайтов набрались сегодняшние цифры (только ненулевые, по убыванию показов). */
+  bySite: { siteUrl: string; accountId: string; clicks: number; impressions: number }[];
   errors: DailyBreakdownFanOut['errors'];
   /** True when at least one property could not be read, so the sum is short. */
   partial: boolean;
@@ -704,7 +706,14 @@ export async function fetchTodayTotals(db: Db): Promise<TodayTotals> {
   );
 
   const daily: DailyRow[] = [];
+  const bySite: TodayTotals['bySite'] = [];
   rows.forEach((r, i) => {
+    if (r.status === 'fulfilled') {
+      const { acc, site } = pairs[i];
+      const clicks = r.value.reduce((a, x) => a + x.clicks, 0);
+      const impressions = r.value.reduce((a, x) => a + x.impressions, 0);
+      if (clicks || impressions) bySite.push({ siteUrl: site.siteUrl, accountId: acc.id, clicks, impressions });
+    }
     if (r.status !== 'fulfilled') {
       // Dropping these silently turns a partial sum into a confident total, and
       // an outage into a very bad day.
@@ -730,7 +739,8 @@ export async function fetchTodayTotals(db: Db): Promise<TodayTotals> {
   // Any error at all means the sum is short: a failed account discovery
   // contributes zero properties, which counting only site-level failures read
   // as "nothing went wrong".
-  return { date, totals: totalsOf(daily), errors, partial: errors.length > 0 };
+  bySite.sort((a, b) => b.impressions - a.impressions || b.clicks - a.clicks);
+  return { date, totals: totalsOf(daily), bySite, errors, partial: errors.length > 0 };
 }
 
 function totalsOf(rows: DailyRow[]): PeriodTotals {

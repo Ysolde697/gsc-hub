@@ -30,10 +30,13 @@
   type Today = {
     date: string;
     totals: { clicks: number; impressions: number };
+    bySite?: { siteUrl: string; accountId: string; clicks: number; impressions: number }[];
     partial: boolean;
     errors: { accountEmail: string; reason: string }[];
   };
   let today = $state<Today | null>(null);
+  // Сегодняшние цифры по сайтам — для метки «сегодня N» на карточке.
+  const todayBySite = $derived(new Map((today?.bySite ?? []).map((t) => [`${t.accountId}|${t.siteUrl}`, t])));
   let todayFailed = $state(false);
 
   // Today is fetched on its own, outside page data, so Refresh calls it again.
@@ -228,6 +231,7 @@
   {@const worst = Math.max(-(dC ?? 0), -(dI ?? 0), 0)}
   {@const isFav = favs.has(keyOf(e))}
   {@const isHidden = hidden.has(keyOf(e))}
+  {@const todayHere = todayBySite.get(keyOf(e))}
   {@const market = marketOf(e.siteUrl)}
   {@const domain = siteDomain(e.siteUrl)}
   <article
@@ -252,6 +256,9 @@
             onerror={(ev) => ((ev.currentTarget as HTMLImageElement).style.display = 'none')}
           />
           <span class="pii truncate text-[13px] font-semibold text-ink">{domain}</span>
+          {#if todayHere}
+            <span class="badge badge-ok shrink-0 px-1 py-0 text-[10px]" title="Сегодня (день ещё идёт): {todayHere.impressions} показов, {todayHere.clicks} кликов">сегодня {fmtNum(todayHere.impressions)}</span>
+          {/if}
         </div>
         <div class="flex min-w-0 items-center gap-1.5 text-[11px] text-ink-3">
           {#if market}
@@ -440,6 +447,19 @@
         <span class="stat-value pii">{fmtNum(today.totals.impressions)}</span>
       </div>
       <div class="text-[11px] text-ink-3">still filling — no comparison</div>
+      {#if today.bySite?.length}
+        <div class="flex w-full flex-wrap items-center gap-1 text-[11px]">
+          <span class="text-ink-3">сегодня по сайтам:</span>
+          {#each today.bySite.slice(0, 20) as t (t.accountId + t.siteUrl)}
+            <a
+              class="pii rounded bg-sunk px-1.5 py-0.5 text-ink-2 hover:bg-acc-t hover:text-acc"
+              href="/properties/{encodeURIComponent(t.siteUrl)}?acc={encodeURIComponent(t.accountId)}"
+              title="Сегодня: {fmtNum(t.impressions)} показов, {fmtNum(t.clicks)} кликов"
+            >{t.siteUrl.replace(/^sc-domain:|^https?:\/\/(www\.)?|\/$/g, '')} · <b>{fmtNum(t.impressions)}</b>{t.clicks ? ` · ${fmtNum(t.clicks)} кл.` : ''}</a>
+          {/each}
+          {#if today.bySite.length > 20}<span class="text-ink-3">и ещё {today.bySite.length - 20}</span>{/if}
+        </div>
+      {/if}
       {#if today.partial}
         <span
           class="badge badge-warn"
