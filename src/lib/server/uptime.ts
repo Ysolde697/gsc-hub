@@ -248,8 +248,11 @@ export async function checkHost(db: Db, host: string, f: typeof fetch = fetch): 
     const g = await fetchPage(homeUrl, GOOGLEBOT_UA, f);
     const gt = pageTitle(g.body);
     home.data.googlebot = { status: g.status, title: gt, finalUrl: g.finalUrl };
-    const cfBlock = g.status === 403 && /cloudflare/i.test(g.body.slice(0, 5000));
-    if (!cfBlock && g.ok) {
+    // Отказ «поддельному Googlebot» (401/403/429) — обычная защита: запрос идёт
+    // с нашего сервера, а не с адреса Google. Настоящего Google сайт пускает.
+    const refused = g.status === 401 || g.status === 403 || g.status === 429;
+    if (refused) home.data.googlebot = { ...home.data.googlebot, title: 'сервер не пускает поддельного Googlebot — это нормальная защита' };
+    if (!refused && g.ok) {
       let gHost = '';
       try {
         gHost = baseHost(new URL(g.finalUrl).hostname);
