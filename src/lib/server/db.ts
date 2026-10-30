@@ -315,6 +315,23 @@ CREATE TABLE IF NOT EXISTS uptime_history (
 );
 CREATE INDEX IF NOT EXISTS idx_uptime_history_host ON uptime_history (host, at);
 
+-- Ключи счётчика: все, что выдавались. Принимается любой не отозванный —
+-- смена ключа не ломает сайты со старым. Хранится только sha256.
+CREATE TABLE IF NOT EXISTS counter_keys (
+  hash         TEXT PRIMARY KEY,
+  prefix       TEXT NOT NULL,
+  created_at   INTEGER NOT NULL,
+  revoked_at   INTEGER,
+  last_used_at INTEGER
+);
+-- С каких сайтов приходит каждый ключ (чтобы знать, что сломается при отзыве).
+CREATE TABLE IF NOT EXISTS counter_key_hosts (
+  hash    TEXT NOT NULL,
+  host    TEXT NOT NULL,
+  last_at INTEGER NOT NULL,
+  PRIMARY KEY (hash, host)
+);
+
 -- Сколько секунд страницы были открыты на экране (сумма за день).
 -- Среднее время = seconds / просмотры (kind = 'view' в button_clicks).
 CREATE TABLE IF NOT EXISTS page_time (

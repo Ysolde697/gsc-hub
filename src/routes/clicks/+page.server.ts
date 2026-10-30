@@ -1,5 +1,6 @@
 import type { PageServerLoad, Actions } from './$types';
-import { ensureCounterKey } from '$lib/server/config';
+import { ensureCounterKey, listCounterKeys, revokeCounterKey } from '$lib/server/config';
+import { fail } from '@sveltejs/kit';
 import { reportPeriod } from '$lib/server/report-period';
 import { db } from '$lib/server/db';
 import { requireAdmin } from '$lib/server/guard';
@@ -39,14 +40,21 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     clicks: clicks.filter((r) => mine(r.host)),
     time: timeForRange(db(), period.startDate, period.endDate).filter((t) => mine(t.host)),
     gsc,
-    gscImpr, lastSeen: seen, errors, workerCode: workerScript(url.origin), counterKey: ensureCounterKey(db()) };
+    gscImpr, lastSeen: seen, errors, workerCode: workerScript(url.origin), counterKey: ensureCounterKey(db()), keys: listCounterKeys(db()) };
 };
 
 export const actions: Actions = {
   // Новый ключ: старый Worker перестанет приниматься — код надо обновить на всех сайтах.
+  // Новый ключ для новых сайтов; старые продолжают приниматься, пока их не отозвать.
   rotateKey: ({ locals }) => {
     requireAdmin(locals);
     ensureCounterKey(db(), true);
     return { rotated: true };
+  },
+  revokeKey: async ({ locals, request }) => {
+    requireAdmin(locals);
+    const hash = String((await request.formData()).get('hash') ?? '');
+    if (!revokeCounterKey(db(), hash)) return fail(400, { keyError: 'Текущий ключ отозвать нельзя — сначала выдайте новый' });
+    return { revoked: true };
   }
 };

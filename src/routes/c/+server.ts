@@ -1,9 +1,8 @@
 import type { RequestHandler } from './$types';
-import { timingSafeEqual } from 'node:crypto';
 import { db } from '$lib/server/db';
 import { listAllKnownSites } from '$lib/server/google';
 import { siteHostname } from '$lib/utils/url-filters';
-import { getConfigValue } from '$lib/server/config';
+import { counterKeyOk } from '$lib/server/config';
 import { allowClick, clicksToday, isBotUA, normHost, parseWorkerEvent, recordClick, recordTime } from '$lib/server/button-clicks';
 
 // Приём событий счётчика от Cloudflare Worker ваших сайтов (без входа, но с
@@ -31,25 +30,20 @@ async function knownHosts(): Promise<Set<string>> {
 
 const EMPTY = () => new Response(null, { status: 204, headers: { 'Cache-Control': 'no-store' } });
 
-function keyOk(given: string | null): boolean {
-  const key = getConfigValue(db(), 'COUNTER_KEY');
-  if (!key || !given) return false;
-  const a = Buffer.from(given), b = Buffer.from(key);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
 
 /** Старый браузерный счётчик (/c.js) отключён — такие запросы не считаем. */
 export const GET: RequestHandler = () => EMPTY();
 
 export const POST: RequestHandler = async ({ request }) => {
-  if (!keyOk(request.headers.get('x-counter-key'))) return EMPTY();
   const ua = request.headers.get('x-client-ua') ?? '';
-  if (isBotUA(ua)) return EMPTY();
   const ip = request.headers.get('x-client-ip') || 'worker';
   try {
     const parsed = parseWorkerEvent(await request.json());
     if (!parsed) return EMPTY();
     const host = 'click' in parsed ? parsed.click.host : parsed.time.host;
+    // Любой выданный и не отозванный ключ; запоминаем, с какого сайта он пришёл.
+    if (!counterKeyOk(db(), request.headers.get('x-counter-key'), host)) return EMPTY();
+    if (isBotUA(ua)) return EMPTY();
     if (!(await knownHosts()).has(host)) return EMPTY();
     if ('time' in parsed) {
       if (allowClick(ip, { host, page: parsed.time.page, kind: 'view', label: 'time:' + Date.now(), target: '' })) recordTime(db(), parsed.time);

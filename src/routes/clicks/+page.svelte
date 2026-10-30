@@ -104,16 +104,43 @@
           <li>Новые сайты — только шаг 4: маршрут в тот же Worker. Сайт должен быть в подключённой консоли Search Console, иначе панель его не примет.</li>
           <li>Проверка: откройте сайт в обычном браузере, нажмите кнопку заказа — через минуту обновите эту страницу.</li>
         </ol>
-        <p class="text-xs text-ink-3">Старый подсчёт (другой Worker, Zaraz, правило) уберите, чтобы не считалось дважды. Если ключ где-то засветился (лог, переписка) — «Сменить ключ» и обновите секрет <code>COUNTER_KEY</code> в Worker. Бесплатный тариф Cloudflare — 100 000 запросов к Worker в день на аккаунт.</p>
+        <p class="text-xs text-ink-3">Старый подсчёт (другой Worker, Zaraz, правило) уберите, чтобы не считалось дважды. Новый ключ не ломает сайты: старые ключи принимаются, пока вы их не отзовёте. Отзывайте только утёкший ключ — и только после того, как поставили сайтам текущий. Бесплатный тариф Cloudflare — 100 000 запросов к Worker в день на аккаунт.</p>
         <div class="flex flex-wrap items-center gap-2">
           <button type="button" class="btn btn-pri btn-sm" onclick={() => copy(data.workerCode, 'code')}>{copied === 'code' ? 'Скопировано ✓' : 'Копировать код Worker'}</button>
           <button type="button" class="btn btn-sec btn-sm" onclick={() => copy(data.counterKey, 'key')}>{copied === 'key' ? 'Скопировано ✓' : 'Копировать ключ'}</button>
           <button type="button" class="btn btn-ghost btn-sm" onclick={() => (showCode = !showCode)}>{showCode ? 'Скрыть код' : 'Показать код'}</button>
-          <form method="POST" action="?/rotateKey" use:enhance={({ cancel }) => { if (!confirm('Сменить ключ? Пока вы не обновите секрет COUNTER_KEY в Worker, счётчик не будет считать.')) cancel(); }}>
-            <button class="btn btn-ghost btn-sm text-bad">Сменить ключ</button>
+          <form method="POST" action="?/rotateKey" use:enhance={({ cancel }) => { if (!confirm('Выдать новый ключ? Старые ключи продолжат работать, пока вы их не отзовёте — сайты не сломаются.')) cancel(); }}>
+            <button class="btn btn-ghost btn-sm">Новый ключ</button>
           </form>
         </div>
-        {#if form?.rotated}<p class="text-xs text-emerald-700">Ключ сменён. Скопируйте новый и обновите секрет COUNTER_KEY в Worker.</p>{/if}
+        {#if form?.rotated}<p class="text-xs text-emerald-700">Новый ключ выдан — ставьте его на новые сайты. Старые ключи продолжают работать.</p>{/if}
+        {#if form?.keyError}<p class="text-xs text-bad">{form.keyError}</p>{/if}
+        {#if data.keys.length}
+          <div class="text-xs">
+            <div class="mb-1 font-semibold text-ink-2">Ключи (принимается любой не отозванный)</div>
+            <table class="app-table rounded border border-line bg-pane">
+              <thead><tr><th>Ключ</th><th>Выдан</th><th>Последний раз</th><th>С каких сайтов приходит</th><th></th></tr></thead>
+              <tbody>
+                {#each data.keys as k (k.hash)}
+                  <tr class={k.revokedAt ? 'opacity-50' : ''}>
+                    <td class="whitespace-nowrap font-mono">{k.prefix}…{#if k.current} <span class="badge badge-ok">текущий</span>{/if}{#if k.revokedAt} <span class="badge badge-bad">отозван</span>{/if}</td>
+                    <td class="whitespace-nowrap">{new Date(k.createdAt).toLocaleString('ru-RU', { timeZone: 'Europe/Berlin', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+                    <td class="whitespace-nowrap">{k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString('ru-RU', { timeZone: 'Europe/Berlin', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
+                    <td class="pii">{k.hosts.join(', ') || '—'}</td>
+                    <td class="text-right">
+                      {#if !k.current && !k.revokedAt}
+                        <form method="POST" action="?/revokeKey" use:enhance={({ cancel }) => { if (!confirm(k.hosts.length ? `Отозвать ключ ${k.prefix}…? Перестанут считать: ${k.hosts.join(', ')} — им нужно будет поставить текущий ключ.` : `Отозвать ключ ${k.prefix}…?`)) cancel(); }}>
+                          <input type="hidden" name="hash" value={k.hash} />
+                          <button class="btn btn-ghost btn-sm text-bad" title="Если ключ утёк">Отозвать</button>
+                        </form>
+                      {/if}
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+        {/if}
         <ul class="ml-5 list-disc text-xs text-ink-3">
           <li>Просмотры и время считаются только у настоящих браузеров; боты и проверялки отсеиваются. Время — только пока страница видна на экране.</li>
           <li>«Дошли до оплаты» — только когда после формы реально открылась страница оплаты. Нажатие, после которого сайт не пустил дальше (например, сумма меньше минимума), не считается.</li>
