@@ -1,6 +1,7 @@
 <script lang="ts">
   // «Доступность»: открываются ли сайты и та ли на них страница.
   import { enhance } from '$app/forms';
+  import { goto } from '$app/navigation';
   import SortTh from '$lib/components/SortTh.svelte';
   import { TableSort } from '$lib/table-sort.svelte';
 
@@ -44,7 +45,7 @@
   };
   const when = (t: number) => new Date(t).toLocaleString('ru-RU', { timeZone: 'Europe/Berlin', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
   const LABEL = { ok: 'Всё в порядке', warn: 'Есть замечания', error: 'Проблема', none: 'Ещё не проверялся' } as const;
-  const CLS = { ok: 'badge-ok', warn: 'bg-warn-t text-ink', error: 'bg-bad text-white', none: 'badge-muted' } as const;
+  const CLS = { ok: 'badge-ok', warn: 'badge-warn', error: 'badge-bad', none: 'badge-muted' } as const;
 </script>
 
 <svelte:head><title>Доступность · GSC Hub</title></svelte:head>
@@ -57,6 +58,7 @@
         {counts.error ?? 0} с проблемой · {counts.warn ?? 0} с замечаниями · {counts.ok ?? 0} в порядке{counts.none ? ` · ${counts.none} ещё не проверялись` : ''}
       </span>
       <label class="flex items-center gap-1 text-xs text-ink-2"><input type="checkbox" bind:checked={onlyBad} /> только проблемные</label>
+      <label class="flex items-center gap-1 text-xs text-ink-2" title="Без галочки — сайты консолей, выбранных в шапке"><input type="checkbox" checked={data.all} onchange={(e) => goto(e.currentTarget.checked ? '?all=1' : '?', { keepFocus: true, noScroll: true })} /> все консоли</label>
       <span class="flex-1"></span>
       <form method="POST" action="?/interval" use:enhance class="flex items-center gap-1 text-xs text-ink-3">
         Проверять каждые
@@ -69,7 +71,7 @@
       </form>
     </div>
     <p class="border-b border-line px-3 py-2 text-xs text-ink-3">
-      Проверяется главная и страница заказа (её панель находит по форме на главной): открывается ли, нет ли ошибки, чужого перенаправления, заглушки «домен продаётся» / «аккаунт приостановлен», ошибки или проверки Cloudflare, не истекает ли SSL. «Та ли страница» — сравнение с первым удачным видом страницы (эталоном); если вы сами поменяли сайт, нажмите «Это нормально». Главную ещё открываем как Googlebot — если Google видит другое, это признак взлома. Сайты консолей, выбранных в шапке.
+      Проверяется главная и страница заказа (её панель находит по форме на главной): открывается ли, нет ли ошибки, чужого перенаправления, заглушки «домен продаётся» / «аккаунт приостановлен», ошибки или проверки Cloudflare, не истекает ли SSL. «Та ли страница» — сравнение с первым удачным видом страницы (эталоном); если вы сами поменяли сайт, нажмите «Это нормально». Главную ещё открываем как Googlebot — если Google видит другое, это признак взлома. Сайты консолей, выбранных в шапке (галочка «все консоли» — все сайты).
     </p>
     {#if form?.error}<p class="px-3 py-2 text-xs text-bad">{form.error}</p>{/if}
 

@@ -167,7 +167,7 @@
       <nav class="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto pr-4 [scrollbar-width:none] max-lg:[mask-image:linear-gradient(to_right,black_calc(100%-24px),transparent)]">
         {#each NAV as item (item.href)}
           <a href={item.href} title={item.title} class="nav-link" class:is-active={isActive(item.href)}
-            aria-current={isActive(item.href) ? 'page' : undefined}>{item.label}{#if item.href === '/uptime' && data?.uptimeErrors}<span class="ml-1 rounded bg-bad px-1 text-[10px] font-semibold text-white" title="Сайтов с ошибкой">{data.uptimeErrors}</span>{/if}</a>
+            aria-current={isActive(item.href) ? 'page' : undefined}>{item.label}{#if item.href === '/uptime' && data?.uptimeErrors}<span class="ml-1 rounded bg-dn px-1 text-[10px] font-semibold text-white" title="Сайтов с ошибкой">{data.uptimeErrors}</span>{/if}</a>
         {/each}
       </nav>
     {/if}

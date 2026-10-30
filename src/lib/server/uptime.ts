@@ -41,7 +41,30 @@ const MAX_BODY = 2_000_000;
 
 export const baseHost = (h: string) => h.toLowerCase().replace(/^www\./, '');
 
+/** Понятный текст сетевой ошибки. */
+export function netError(e: unknown): string {
+  const err = e as Error & { cause?: { code?: string; message?: string } };
+  if (err.name === 'TimeoutError') return 'не ответил за 15 секунд';
+  const code = err.cause?.code ?? '';
+  const msg = String(err.cause?.message ?? err.message ?? '');
+  if (code === 'ENOTFOUND') return 'не открывается: домен не находится (нет записи DNS — домен не продлён или не настроен)';
+  if (code === 'EAI_AGAIN') return 'не открывается: DNS не ответил';
+  if (code === 'ECONNREFUSED') return 'не открывается: сервер не принимает соединения';
+  if (code === 'ECONNRESET' || code === 'UND_ERR_SOCKET') return 'не открывается: сервер оборвал соединение';
+  if (/CERT|certificate/i.test(code + msg)) return 'не открывается: ошибка SSL-сертификата';
+  if (/SSL|TLS|0A000/i.test(msg)) return 'не открывается: ошибка защищённого соединения (SSL/TLS)';
+  return `не открывается: ${msg.slice(0, 100)}`;
+}
+
+/** Открыть страницу; при сетевой ошибке — ещё раз через 3 секунды (разовая заминка — не падение). */
 export async function fetchPage(url: string, ua: string = BROWSER_UA, f: typeof fetch = fetch): Promise<FetchResult> {
+  const first = await fetchOnce(url, ua, f);
+  if (first.ok || f !== fetch) return first;
+  await new Promise((r) => setTimeout(r, 3000));
+  return fetchOnce(url, ua, f);
+}
+
+async function fetchOnce(url: string, ua: string, f: typeof fetch): Promise<FetchResult> {
   const t0 = Date.now();
   const chain: string[] = [];
   let cur = url;
@@ -63,7 +86,7 @@ export async function fetchPage(url: string, ua: string = BROWSER_UA, f: typeof 
     }
     return { ok: false, status: null, ms: Date.now() - t0, finalUrl: cur, chain, contentType: '', body: '', error: 'слишком много перенаправлений' };
   } catch (e) {
-    const msg = (e as Error).name === 'TimeoutError' ? 'не ответил за 15 секунд' : `не открывается: ${String((e as Error).cause ?? (e as Error).message).slice(0, 120)}`;
+    const msg = netError(e);
     return { ok: false, status: null, ms: Date.now() - t0, finalUrl: cur, chain, contentType: '', body: '', error: msg };
   }
 }
@@ -105,7 +128,7 @@ export function similarity(a: number[], b: number[]): number {
 }
 
 const PATTERNS: [RegExp, Level, string][] = [
-  [/domain (name )?(is |may be )?for sale|buy this domain|this domain is for sale|parked (free|domain|by)|sedoparking|afternic|dan\.com\/buy|hugedomains/i, 'error', 'Заглушка «домен продаётся» — похоже, домен не продлён или припаркован'],
+  [/domain (name )?(is |may be )?for sale|buy this domain|this domain (is|may be) for sale|parked (free|domain|by)|sedoparking|afternic|dan\.com\/buy|hugedomains|abovedomains|parkingcrew|bodis\.com|domain parking/i, 'error', 'Заглушка «домен продаётся» — похоже, домен не продлён или припаркован'],
   [/account (has been |is )?suspended|this (site|website|account) (has been |is )?suspended|bandwidth limit exceeded|website (is )?(expired|disabled)/i, 'error', 'Заглушка хостинга: аккаунт приостановлен'],
   [/error 10(0\d|1\d|2\d)\b|error 52[0-9]\b|web server is (down|returning an unknown error)|origin is unreachable|bad gateway/i, 'error', 'Ошибка Cloudflare или сервера на странице'],
   [/attention required! \| cloudflare|checking your browser|just a moment\.\.\.|cf-challenge|challenge-platform/i, 'warn', 'Cloudflare показывает проверку «вы человек?» (возможно, только роботам)'],
@@ -140,9 +163,10 @@ export function analyze(kind: 'home' | 'order', siteHost: string, r: FetchResult
     if (r.ms > 6000) problems.push({ level: 'warn', text: `Медленно: ${(r.ms / 1000).toFixed(1)} с` });
     if (!foreign && r.status !== null && r.status < 400) {
       if (!/html/i.test(r.contentType) && r.body.length) problems.push({ level: 'warn', text: `Отдаётся не HTML (${r.contentType || 'без типа'})` });
-      const hay = title + ' ' + text.slice(0, 20000);
+      // Заголовок, текст и начало кода страницы (описание, скрипты парковки).
+      const hay = title + ' ' + text.slice(0, 20000) + ' ' + r.body.slice(0, 5000);
       for (const [re, level, msg] of PATTERNS) if (re.test(hay) || (level === 'warn' && msg.startsWith('Cloudflare') && re.test(r.body.slice(0, 20000)))) problems.push({ level, text: msg });
-      if (text.length < 200) problems.push({ level: 'error', text: 'Страница почти пустая' });
+      if (text.length < 200 && !problems.some((p) => p.level === 'error')) problems.push({ level: 'error', text: 'Страница почти пустая' });
       if (base) {
         sim = similarity(base.shingles, sh);
         if (base.title && title !== base.title) problems.push({ level: 'warn', text: `Заголовок изменился: было «${base.title.slice(0, 80)}», стало «${title.slice(0, 80) || 'пусто'}»` });

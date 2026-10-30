@@ -18,6 +18,8 @@ export default {
         acc: { DEFAULT: v('acc'), deep: v('acc-deep'), t: v('acc-t') },
         up: { DEFAULT: v('up'), t: v('up-t') },
         dn: { DEFAULT: v('dn'), t: v('dn-t') },
+        // bad / err — то же, что dn: красный для ошибок.
+        bad: { DEFAULT: v('dn'), t: v('dn-t') },
         upd: { DEFAULT: v('upd'), t: v('upd-t'), ink: v('upd-ink') },
         warn: { DEFAULT: v('warn'), t: v('warn-t') }
       },

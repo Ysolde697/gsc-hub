@@ -341,6 +341,14 @@ export function openDb(path: string): Db {
   // Разовая очистка счётчика кнопок: до перехода на Cloudflare Worker туда
   // попадали боты и неудачные отправки формы — эти цифры неверны.
   db.exec('CREATE TABLE IF NOT EXISTS schema_marks (name TEXT PRIMARY KEY)');
+  // Доступность: перепроверить все сайты после исправления ложных тревог
+  // (отказ поддельному Googlebot, разовые сетевые сбои).
+  if (!db.prepare("SELECT 1 FROM schema_marks WHERE name = 'uptime-v2'").get()) {
+    db.transaction(() => {
+      db.exec('DELETE FROM uptime_checks;');
+      db.prepare("INSERT INTO schema_marks (name) VALUES ('uptime-v2')").run();
+    })();
+  }
   if (!db.prepare("SELECT 1 FROM schema_marks WHERE name = 'counter-v2'").get()) {
     db.transaction(() => {
       db.exec('DELETE FROM button_clicks; DELETE FROM page_time;');

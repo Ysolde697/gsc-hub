@@ -5,24 +5,28 @@ import { requireAdmin } from '$lib/server/guard';
 import { listSitesForAllAccounts } from '$lib/server/google';
 import { siteHostname } from '$lib/utils/url-filters';
 import { setConfigValue } from '$lib/server/config';
-import { acceptCurrent, baseHost, checkHost, history, intervalHours, INTERVALS, listChecks, runDue } from '$lib/server/uptime';
+import { acceptCurrent, allHosts, baseHost, checkHost, history, intervalHours, INTERVALS, listChecks, runDue } from '$lib/server/uptime';
 
-export const load: PageServerLoad = async ({ locals }) => {
+export const load: PageServerLoad = async ({ locals, url }) => {
   requireAdmin(locals);
-  // Сайты консолей, выбранных в шапке (и группы, если выбрана).
-  const { sites } = await listSitesForAllAccounts(db());
+  // Сайты консолей, выбранных в шапке (и группы, если выбрана), или ?all=1 — все консоли.
+  const all = url.searchParams.get('all') === '1';
   const hosts = new Set<string>();
-  for (const s of sites) {
-    try {
-      hosts.add(baseHost(siteHostname(s.siteUrl)));
-    } catch {
-      /* битый адрес */
+  if (all) for (const h of await allHosts(db())) hosts.add(h);
+  else {
+    const { sites } = await listSitesForAllAccounts(db());
+    for (const s of sites) {
+      try {
+        hosts.add(baseHost(siteHostname(s.siteUrl)));
+      } catch {
+        /* битый адрес */
+      }
     }
   }
   const checks = listChecks(db()).filter((c) => hosts.has(c.host));
   const hist: Record<string, ReturnType<typeof history>> = {};
   for (const h of hosts) hist[h] = history(db(), h, 20);
-  return { hosts: [...hosts].sort(), checks, history: hist, interval: intervalHours(db()), intervals: [...INTERVALS] };
+  return { all, hosts: [...hosts].sort(), checks, history: hist, interval: intervalHours(db()), intervals: [...INTERVALS] };
 };
 
 export const actions: Actions = {
