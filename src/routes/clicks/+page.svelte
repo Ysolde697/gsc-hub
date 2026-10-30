@@ -7,15 +7,15 @@
   import SortTh from '$lib/components/SortTh.svelte';
   import { TableSort } from '$lib/table-sort.svelte';
 
-  let { data } = $props();
+  let { data, form } = $props();
   const KIND: Record<string, string> = { view: 'Просмотр', submit: 'Дошёл до оплаты', button: 'Кнопка', out: 'Ссылка на другой сайт', link: 'Обычная ссылка' };
-  let copied = $state(false);
+  let copied = $state<'' | 'code' | 'key'>('');
   let showCode = $state(false);
-  async function copy() {
+  async function copy(text: string, what: 'code' | 'key') {
     try {
-      await navigator.clipboard.writeText(data.workerCode);
-      copied = true;
-      setTimeout(() => (copied = false), 2000);
+      await navigator.clipboard.writeText(text);
+      copied = what;
+      setTimeout(() => (copied = ''), 2000);
     } catch {
       /* браузер не дал — пусть скопируют руками */
     }
@@ -95,23 +95,25 @@
     <details class="border-b border-line" open={Object.keys(data.lastSeen).length === 0}>
       <summary class="cursor-pointer px-3 py-2 text-sm font-semibold">Как подключить счётчик к сайту (Cloudflare)</summary>
       <div class="space-y-2 px-3 pb-3 text-sm text-ink-2">
-        <p>Считает Cloudflare Worker: он сам вставляет в страницы маленький код подсчёта и отправляет данные на адрес <b>самого сайта</b> — в шаблоне ничего не меняется, адреса панели на сайте нет, сайты между собой не связаны. Нужен один раз:</p>
+        <p>Считает Cloudflare Worker: он подключает к страницам маленький файл счётчика <b>с адреса самого сайта</b> (<code>/_e.js</code>) — защита сайта (CSP) его пропускает, в шаблоне ничего не меняется, адреса панели на сайте нет, сайты между собой не связаны. Переход к оплате, который сразу уводит на кассу, Worker засчитывает сам.</p>
         <ol class="ml-5 list-decimal space-y-1">
           <li>Cloudflare → <b>Workers &amp; Pages</b> → <b>Create</b> → <b>Create Worker</b> (Hello World) → назовите, например, <code>site-stats</code> → <b>Deploy</b>.</li>
-          <li><b>Edit code</b> → удалите всё, вставьте код ниже (кнопка «Копировать код») → <b>Deploy</b>.</li>
-          <li>Worker → <b>Settings</b> → <b>Domains &amp; Routes</b> → <b>Add</b> → <b>Route</b>: зона — ваш сайт, маршрут <code>fccoins.fr/*</code> (и <code>www.fccoins.fr/*</code>, если сайт открывается с www) → <b>Add route</b>.</li>
-          <li>Новые сайты — только шаг 3: добавить маршрут для домена в тот же Worker. Сайт должен быть в подключённой консоли Search Console, иначе панель его не примет.</li>
+          <li><b>Edit code</b> → удалите всё, вставьте код ниже («Копировать код Worker») → <b>Deploy</b>.</li>
+          <li>Worker → <b>Settings</b> → <b>Variables and Secrets</b> → <b>Add</b> → тип <b>Secret</b>, имя <code>COUNTER_KEY</code>, значение — ключ («Копировать ключ») → <b>Deploy</b>. Ключа в коде нет — только здесь.</li>
+          <li>Worker → <b>Settings</b> → <b>Domains &amp; Routes</b> → <b>Add</b> → <b>Route</b>: зона — ваш сайт, маршрут <code>fccoins.fr/*</code> (и <code>www.fccoins.fr/*</code>, если сайт открывается с www).</li>
+          <li>Новые сайты — только шаг 4: маршрут в тот же Worker. Сайт должен быть в подключённой консоли Search Console, иначе панель его не примет.</li>
           <li>Проверка: откройте сайт в обычном браузере, нажмите кнопку заказа — через минуту обновите эту страницу.</li>
         </ol>
-        <p class="text-xs text-ink-3">Если раньше вы ставили другой подсчёт через Cloudflare (свой Worker, Zaraz, правило) — уберите его, чтобы не считалось дважды. На бесплатном тарифе Cloudflare — 100 000 запросов к Worker в день на аккаунт.</p>
+        <p class="text-xs text-ink-3">Старый подсчёт (другой Worker, Zaraz, правило) уберите, чтобы не считалось дважды. Если ключ где-то засветился (лог, переписка) — «Сменить ключ» и обновите секрет <code>COUNTER_KEY</code> в Worker. Бесплатный тариф Cloudflare — 100 000 запросов к Worker в день на аккаунт.</p>
         <div class="flex flex-wrap items-center gap-2">
-          <button type="button" class="btn btn-pri btn-sm" onclick={copy}>{copied ? 'Скопировано ✓' : 'Копировать код Worker'}</button>
+          <button type="button" class="btn btn-pri btn-sm" onclick={() => copy(data.workerCode, 'code')}>{copied === 'code' ? 'Скопировано ✓' : 'Копировать код Worker'}</button>
+          <button type="button" class="btn btn-sec btn-sm" onclick={() => copy(data.counterKey, 'key')}>{copied === 'key' ? 'Скопировано ✓' : 'Копировать ключ'}</button>
           <button type="button" class="btn btn-ghost btn-sm" onclick={() => (showCode = !showCode)}>{showCode ? 'Скрыть код' : 'Показать код'}</button>
-          <form method="POST" action="?/rotateKey" use:enhance={({ cancel }) => { if (!confirm('Сменить ключ? Старый код перестанет считать — его надо будет заменить в Worker.')) cancel(); }}>
+          <form method="POST" action="?/rotateKey" use:enhance={({ cancel }) => { if (!confirm('Сменить ключ? Пока вы не обновите секрет COUNTER_KEY в Worker, счётчик не будет считать.')) cancel(); }}>
             <button class="btn btn-ghost btn-sm text-bad">Сменить ключ</button>
           </form>
         </div>
-        {#if showCode}<pre class="max-h-80 overflow-auto rounded border border-line bg-sunk p-2 text-[11px]">{data.workerCode}</pre>{/if}
+        {#if form?.rotated}<p class="text-xs text-emerald-700">Ключ сменён. Скопируйте новый и обновите секрет COUNTER_KEY в Worker.</p>{/if}
         <ul class="ml-5 list-disc text-xs text-ink-3">
           <li>Просмотры и время считаются только у настоящих браузеров; боты и проверялки отсеиваются. Время — только пока страница видна на экране.</li>
           <li>«Дошли до оплаты» — только когда после формы реально открылась страница оплаты. Нажатие, после которого сайт не пустил дальше (например, сумма меньше минимума), не считается.</li>

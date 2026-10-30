@@ -75,10 +75,12 @@ it('код страницы и Worker — корректный JavaScript; ад�
   const snip = pageSnippet();
   expect(() => new Function(snip)).not.toThrow();
   expect(snip).not.toContain('sslip');
-  const w = workerScript('https://panel.example', 'KEY123');
+  const w = workerScript('https://panel.example');
   expect(() => new Function(w.replace('export default', 'return'))).not.toThrow();
   expect(w).toContain('"https://panel.example/c"');
-  expect(w).toContain('"KEY123"');
+  // ключ — только в секрете Worker
+  expect(w).toContain('env.COUNTER_KEY');
+  expect(w).toContain('<script src="');
 });
 
 it('parseWorkerEvent и боты', () => {

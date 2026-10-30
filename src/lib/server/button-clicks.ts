@@ -186,42 +186,63 @@ try{sessionStorage.setItem('__ghs',JSON.stringify({a:a.pathname,l:label(b)||'ф�
 })();`;
 }
 
-/** Код Cloudflare Worker: вставляет счётчик в страницы и пересылает события в панель. */
-export function workerScript(panelOrigin: string, key: string, path: string = SITE_PATH): string {
+/** Код Cloudflare Worker: подключает счётчик к страницам и пересылает события в панель. */
+export function workerScript(panelOrigin: string, path: string = SITE_PATH): string {
   return `// GSC Hub — счётчик просмотров, времени и кнопок для сайта (Cloudflare Worker).
-// Ничего не меняет на сайте, кроме маленького кода в <head> HTML-страниц.
+// На сайте меняется только одно: в <head> HTML-страниц добавляется
+// <script src="${path}.js" defer> — файл с адреса самого сайта (его отдаёт этот
+// Worker), поэтому защита сайта (Content-Security-Policy: script-src 'self') его пропускает.
 // События идут на адрес самого сайта (${path}), Worker пересылает их в панель.
+// Ключ панели — в секрете Worker COUNTER_KEY (Settings → Variables and Secrets), не в коде.
 const PANEL = ${JSON.stringify(panelOrigin + '/c')};
-const KEY = ${JSON.stringify(key)};
 const PATH = ${JSON.stringify(path)};
-const SNIPPET = ${JSON.stringify('<script>' + pageSnippet(path) + '</script>')};
+const SNIPPET_JS = ${JSON.stringify(pageSnippet(path))};
+
+function forward(env, ctx, request, host, e) {
+  if (!env.COUNTER_KEY || e.length > 4000) return;
+  ctx.waitUntil(
+    fetch(PANEL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Counter-Key': env.COUNTER_KEY,
+        'X-Client-IP': request.headers.get('CF-Connecting-IP') || '',
+        'X-Client-UA': request.headers.get('User-Agent') || ''
+      },
+      body: JSON.stringify({ h: host, e })
+    }).catch(() => {})
+  );
+}
 
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    if (url.pathname === PATH + '.js') {
+      return new Response(SNIPPET_JS, { headers: { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=3600' } });
+    }
     if (url.pathname === PATH) {
-      if (request.method === 'POST') {
-        const e = await request.text();
-        if (e.length < 4000) {
-          ctx.waitUntil(
-            fetch(PANEL, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'X-Counter-Key': KEY,
-                'X-Client-IP': request.headers.get('CF-Connecting-IP') || '',
-                'X-Client-UA': request.headers.get('User-Agent') || ''
-              },
-              body: JSON.stringify({ h: url.hostname, e })
-            }).catch(() => {})
-          );
-        }
-      }
+      if (request.method === 'POST') forward(env, ctx, request, url.hostname, await request.text());
       return new Response(null, { status: 204, headers: { 'Cache-Control': 'no-store' } });
     }
     const res = await fetch(request);
+    const isPage = request.method === 'GET' && request.headers.get('Sec-Fetch-Dest') === 'document';
+    // Переход к оплате сразу перенаправлением на другой сайт (касса): страница
+    // сайта не открывается, поэтому считаем здесь — «дошли до оплаты».
+    const loc = res.headers.get('Location');
+    if (isPage && res.status >= 300 && res.status < 400 && loc) {
+      try {
+        const to = new URL(loc, url);
+        if (to.hostname.replace(/^www\\./, '') !== url.hostname.replace(/^www\\./, '')) {
+          const target = (url.pathname + url.search).slice(0, 300);
+          forward(env, ctx, request, url.hostname, JSON.stringify({ k: 'submit', p: url.pathname, l: 'Переход к оплате', t: target }));
+        }
+      } catch (e) {}
+      return res;
+    }
     if (request.method !== 'GET' || !(res.headers.get('Content-Type') || '').includes('text/html')) return res;
-    return new HTMLRewriter().on('head', { element(el) { el.append(SNIPPET, { html: true }); } }).transform(res);
+    return new HTMLRewriter()
+      .on('head', { element(el) { el.append('<script src="' + PATH + '.js" defer></script>', { html: true }); } })
+      .transform(res);
   }
 };
 `;

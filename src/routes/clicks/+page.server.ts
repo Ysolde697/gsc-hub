@@ -38,7 +38,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     clicks: clicks.filter((r) => mine(r.host)),
     time: timeForRange(db(), period.startDate, period.endDate).filter((t) => mine(t.host)),
     gsc,
-    gscImpr, lastSeen: seen, errors, workerCode: workerScript(url.origin, ensureCounterKey(db())) };
+    gscImpr, lastSeen: seen, errors, workerCode: workerScript(url.origin), counterKey: ensureCounterKey(db()) };
 };
 
 export const actions: Actions = {
