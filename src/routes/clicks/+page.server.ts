@@ -1,5 +1,6 @@
 import type { PageServerLoad, Actions } from './$types';
 import { ensureCounterKey } from '$lib/server/config';
+import { reportPeriod } from '$lib/server/report-period';
 import { db } from '$lib/server/db';
 import { requireAdmin } from '$lib/server/guard';
 import { parsePeriod, sitesForPeriod } from '$lib/server/site-keys';
@@ -10,7 +11,7 @@ import { activeGroupHosts } from '$lib/server/site-groups';
 export const load: PageServerLoad = async ({ locals, url }) => {
   requireAdmin(locals);
   // Счётчик пишет данные сразу — «N дней» здесь включают сегодня.
-  const period = parsePeriod(url.searchParams.get('p'), Date.now(), { includeToday: true });
+  const period = reportPeriod(db(), { includeToday: true });
   const clicks = clicksForRange(db(), period.startDate, period.endDate);
   // Клики из Google за тот же период — по домену (у домена бывает 2 property: берём бо́льшую).
   const { sites, errors } = await sitesForPeriod(db(), period);

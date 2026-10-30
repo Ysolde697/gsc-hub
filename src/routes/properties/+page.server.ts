@@ -1,4 +1,5 @@
 import type { PageServerLoad } from './$types';
+import { reportPeriod } from '$lib/server/report-period';
 import { db } from '$lib/server/db';
 import { listSitesWithSummary, fetchPerSiteQueries, fetchPerSitePages, type SiteWithSummary } from '$lib/server/google';
 import { listQueryFilters } from '$lib/server/filters';
@@ -65,7 +66,7 @@ function compareSites(a: SiteWithMeta, b: SiteWithMeta, field: SortField, dir: S
 
 export const load: PageServerLoad = async ({ url, locals }) => {
   requireAdmin(locals);
-  const days = parseDays(url.searchParams.get('days'));
+  const days = reportPeriod(db()).days;
   const sort = parseSort(url.searchParams.get('sort'));
   const dir = parseDir(url.searchParams.get('dir'));
 

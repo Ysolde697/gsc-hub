@@ -4,7 +4,8 @@
   import { siteHostname } from '$lib/utils/url-filters';
   import OtherSitesInline from '$lib/components/OtherSitesInline.svelte';
   import SiteKeysPanel from '$lib/components/SiteKeysPanel.svelte';
-  import PeriodPicker from '$lib/components/PeriodPicker.svelte';
+  import PeriodNote from '$lib/components/PeriodNote.svelte';
+  import { page } from '$app/state';
   import SortTh from '$lib/components/SortTh.svelte';
   import SortCaret from '$lib/components/SortCaret.svelte';
   import { TableSort } from '$lib/table-sort.svelte';
@@ -98,16 +99,7 @@
   });
 
   // Сортировка таблицы «Сайты группы».
-  // Статистика сайтов группы за период (по умолчанию — 28 дней), из всех консолей.
-  const STAT_PERIODS: [string, string][] = [['today', 'Сегодня'], ['yesterday', 'Вчера'], ['7', '7 дней'], ['28', '28 дней'], ['90', '3 мес'], ['180', '6 мес'], ['480', '16 мес']];
-  const PERIOD_KEY = 'gsc-hub:group-period';
-  let statPeriod = $state('28');
-  try {
-    const v = localStorage.getItem(PERIOD_KEY);
-    if (v && (STAT_PERIODS.some(([k]) => k === v) || /^\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}$/.test(v))) statPeriod = v;
-  } catch {
-    /* без памяти — 28 дней */
-  }
+  // Статистика сайтов группы за период из шапки, из всех консолей.
   type HostStat = { clicks: number; impressions: number; ctr: number; position: number | null };
   let stats = $state<Record<string, HostStat>>({});
   let statsLoading = $state(false);
@@ -131,16 +123,8 @@
     }
   }
   $effect(() => {
-    if (group && group.hosts.length) loadStats(group.id, statPeriod);
+    if (group && group.hosts.length) loadStats(group.id, page.data.period?.key ?? '');
   });
-  function setStatPeriod(p: string) {
-    statPeriod = p;
-    try {
-      localStorage.setItem(PERIOD_KEY, p);
-    } catch {
-      /* ничего */
-    }
-  }
 
   type HostKey = 'done' | 'host' | 'console' | 'impressions' | 'clicks' | 'ctr' | 'position' | 'links';
   const hostSort = new TableSort<HostKey>(null, 1, ['links', 'impressions', 'clicks', 'ctr']);
@@ -365,7 +349,7 @@
           <div class="border-b border-line">
             <div class="flex flex-wrap items-center gap-3 px-3 pt-3">
               <span class="text-xs font-semibold uppercase tracking-wide text-ink-3">Сайты группы</span>
-              <PeriodPicker value={statPeriod} onchange={setStatPeriod} />
+              <PeriodNote />
               <span class="text-xs text-ink-3">{statsLoading ? 'Загружаю…' : statsRange}</span>
             </div>
             <table class="app-table">
@@ -481,10 +465,10 @@
                         {/if}
                         {#if knownByHost.get(h)}
                           {@const k = knownByHost.get(h)!}
-                          {#key statPeriod}
+                          {#key page.data.period?.key}
                           <SiteKeysPanel
                             sources={k.sources}
-                            days={/^\d+$/.test(statPeriod) ? Number(statPeriod) : k.days}
+                            days={page.data.period?.days ?? 28}
                             groupId={group.id}
                             fixed={!!group.fixedAt}
                             onadd={(r) => itemsPost({ action: 'add', groupId: group.id, item: { siteUrl: r.siteUrl, query: r.query, page: r.page, position: r.position, impressions: r.impressions, clicks: r.clicks, ctr: r.ctr, qty: r.qty } })}

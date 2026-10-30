@@ -21,13 +21,11 @@ beforeEach(() => {
 });
 afterEach(() => { testDb.close(); vi.clearAllMocks(); });
 
-it('restores a saved period when re-entering and gives explicit dates precedence', async () => {
+it('takes the period from the header (one for the whole panel), not from the link', async () => {
   const page = (query: string) => load({ params: { site }, locals, url: new URL('http://localhost/?acc=account'+query) } as any);
-  await page('&days=365');
-  expect((await page('') as any).days).toBe(365);
-  await page('&days=90');
-  expect((await page('') as any).days).toBe(90);
-  expect(daily.mock.calls.map((c) => c[3])).toEqual([365, 365, 90, 90]);
+  expect((await page('&days=365') as any).days).toBe(28);
+  expect((await page('') as any).days).toBe(28);
+  expect(daily.mock.calls.map((c) => c[3])).toEqual([28, 28]);
 });
 
 it('restores geo on reload and preserves it when the monitor is temporarily unavailable', async () => {

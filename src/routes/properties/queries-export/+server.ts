@@ -1,5 +1,6 @@
 import { error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
+import { reportPeriod } from '$lib/server/report-period';
 import { db } from '$lib/server/db';
 import { fetchPerSiteQueries } from '$lib/server/google';
 import { filterPatterns, queryHidden } from '$lib/server/filters';
@@ -10,8 +11,7 @@ import { requireAdmin } from '$lib/server/guard';
 // with junk-query filters applied. Columns: query, country, impressions, clicks.
 export const GET: RequestHandler = async ({ url, locals }) => {
   requireAdmin(locals);
-  const days = Math.floor(Number(url.searchParams.get('days') ?? '1'));
-  if (!Number.isFinite(days) || days < 1 || days > 480) throw error(400, 'days 1..480');
+  const days = reportPeriod(db()).days;
 
   // accountId|siteUrl keys the client wants excluded (mirrors the UI's hidden set).
   const hidden = new Set((url.searchParams.get('hidden') ?? '').split(',').filter(Boolean));

@@ -4,9 +4,13 @@ import { db } from '$lib/server/db';
 import { listAccounts } from '$lib/server/accounts';
 import { listSiteGroups } from '$lib/server/site-groups';
 import { errorCount } from '$lib/server/uptime';
+import { userPeriodKey } from '$lib/server/user-selection';
+import { DEFAULT_PERIOD } from '$lib/server/report-period';
+import { parsePeriod } from '$lib/server/site-keys';
 
 export const load: LayoutServerLoad = async ({ locals, depends }) => {
   depends('app:consoles');
+  depends('app:period');
   const isAdmin = locals.user?.role === 'admin';
   return {
     user: locals.user,
@@ -27,6 +31,8 @@ export const load: LayoutServerLoad = async ({ locals, depends }) => {
       : [],
     // Сколько сайтов сейчас с ошибкой доступности — число у пункта меню.
     uptimeErrors: isAdmin ? errorCount(db()) : 0,
+    // Период отчётов из шапки — один на всю панель.
+    period: isAdmin ? parsePeriod(userPeriodKey(db()) ?? DEFAULT_PERIOD) : null,
     siteGroups: isAdmin
       ? listSiteGroups(db()).map((g) => ({ id: g.id, name: g.name, active: g.active, size: g.hosts.length }))
       : []

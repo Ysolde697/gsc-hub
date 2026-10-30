@@ -3,7 +3,7 @@
   // в полный список ключей сайта со всеми колонками.
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
-  import PeriodPicker from '$lib/components/PeriodPicker.svelte';
+  import PeriodNote from '$lib/components/PeriodNote.svelte';
   import SortTh from '$lib/components/SortTh.svelte';
   import SiteKeysTable from '$lib/components/SiteKeysTable.svelte';
   import GroupBar from '$lib/components/GroupBar.svelte';
@@ -45,7 +45,7 @@
   <section class="pane">
     <div class="flex flex-wrap items-center gap-3 border-b border-line px-3 py-2">
       <h1 class="text-base font-semibold">Ключи сайтов</h1>
-      <PeriodPicker value={data.period.key} onchange={(v) => goto(`?p=${v}`, { keepFocus: true, noScroll: true })} />
+      <PeriodNote start={data.period.startDate} end={data.period.endDate} />
       <span class="text-xs text-ink-3">{periodLabel}{data.period.key === 'today' || data.period.key === 'yesterday' ? ' · данные за день ещё обновляются' : ''}</span>
       {#if data.period.pending}<span class="text-xs text-warn">Google ещё не начал этот день{data.period.startsAt ? ` — начнёт в ${data.period.startsAt}` : ''}</span>{/if}
     </div>

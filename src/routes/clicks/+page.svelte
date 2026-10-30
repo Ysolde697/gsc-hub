@@ -2,7 +2,7 @@
   // «Кнопки»: сколько раз на ваших сайтах нажали кнопки и отправили форму
   // заказа, рядом с кликами из Google — видно, как шаблон доводит до заказа.
   import { goto } from '$app/navigation';
-  import PeriodPicker from '$lib/components/PeriodPicker.svelte';
+  import PeriodNote from '$lib/components/PeriodNote.svelte';
   import { enhance } from '$app/forms';
   import SortTh from '$lib/components/SortTh.svelte';
   import { TableSort } from '$lib/table-sort.svelte';
@@ -127,7 +127,7 @@
 
     <div class="flex flex-wrap items-center gap-3 border-b border-line px-3 py-2">
       <h1 class="text-base font-semibold">Кнопки</h1>
-      <PeriodPicker value={data.period.key} onchange={(v) => goto(`?p=${v}`, { keepFocus: true, noScroll: true })} />
+      <PeriodNote start={data.period.startDate} end={data.period.endDate} />
       <span class="text-xs text-ink-3">{periodLabel}</span>
       <span class="text-xs text-ink-3">· просмотров {fmt(totals.v)} · нажатий кнопок {fmt(totals.b)} · дошли до оплаты {fmt(totals.s)}</span>
       <label class="ml-auto flex items-center gap-1 text-xs text-ink-2"><input type="checkbox" bind:checked={withLinks} /> показывать и обычные ссылки</label>

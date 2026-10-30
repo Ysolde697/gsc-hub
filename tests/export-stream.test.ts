@@ -131,7 +131,7 @@ describe('export streaming', () => {
     await expect(reader.read()).rejects.toThrow();
   });
 
-  it('asks for the same completed-day window the dashboard uses', async () => {
+  it('asks for the same completed-day window the dashboard uses (period from the header, default 28 days)', async () => {
     // A CSV that disagrees with the screen for the same "days" is the bug this
     // whole change set is about, left in the other half of the product.
     vi.useFakeTimers();
@@ -146,6 +146,7 @@ describe('export streaming', () => {
     const res = await callWithDays(7);
     await new Response(res.body).text();
 
-    expect(windows[0]).toEqual({ startDate: '2026-08-15', endDate: '2026-08-21' });
+    // days в адресе больше не действует: период один на панель, по умолчанию 28 дней.
+    expect(windows[0]).toEqual({ startDate: '2026-07-25', endDate: '2026-08-21' });
   });
 });

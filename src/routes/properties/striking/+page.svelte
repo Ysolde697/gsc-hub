@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { page } from '$app/state';
+  import PeriodNote from '$lib/components/PeriodNote.svelte';
   import SortCaret from '$lib/components/SortCaret.svelte';
   import { goto, replaceState } from '$app/navigation';
   import { displaySite, siteHref } from '$lib/utils/site';
@@ -10,7 +12,7 @@
   import LastPlanCell from '$lib/components/LastPlanCell.svelte';
   import { loadGroupItems, gi, activeGroup, otherGroups, itemKey } from '$lib/group-items.svelte';
   import { classifyIntent } from '$lib/utils/intent';
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   onMount(() => { loadGroupItems(); });
 
   let { data }: { data: PageData } = $props();
@@ -326,6 +328,15 @@
   $effect(() => {
     if (tab === 'decay') loadDecay();
   });
+  // Период в шапке сменился — Decay пересчитать.
+  let lastPeriod = untrack(() => page.data.period?.key);
+  $effect(() => {
+    const k = page.data.period?.key;
+    if (k === lastPeriod) return;
+    lastPeriod = k;
+    decay = null;
+    if (tab === 'decay') loadDecay();
+  });
 </script>
 
 <svelte:head><title>Portfolio analytics — all sites — gsc-hub</title></svelte:head>
@@ -355,19 +366,7 @@
     <div class="app-toolbar-right">
       <a href="/properties" class="btn btn-ghost"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 8H3M7 4 3 8l4 4"/></svg>Sites</a>
       <span class="app-toolbar-divider" aria-hidden="true"></span>
-      <div class="app-segmented">
-        <span class="app-segmented-label">Period</span>
-        {#each [7, 28, 60, 90] as d}
-          <a class:is-active={data.days === d} href="?days={d}&tab={tab}">{d}D</a>
-        {/each}
-        <input
-          type="number" min="1" max="480" placeholder="days"
-          value={[7, 28, 60, 90].includes(data.days) ? '' : data.days}
-          class="input app-num ml-0.5 h-6 w-16 px-1.5 text-xs"
-          onkeydown={(e) => { if (e.key === 'Enter') goToDays(e.currentTarget.value); }}
-          onchange={(e) => goToDays(e.currentTarget.value)}
-        />
-      </div>
+      <PeriodNote />
     </div>
   </header>
 

@@ -1,5 +1,6 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
+import { reportPeriod } from '$lib/server/report-period';
 import { db } from '$lib/server/db';
 import { requireAdmin } from '$lib/server/guard';
 import { getAccount } from '$lib/server/accounts';
@@ -12,7 +13,7 @@ export const GET: RequestHandler = async ({ url, locals }) => {
   const acc = getAccount(db(), url.searchParams.get('acc') ?? '');
   if (!site) throw error(400, 'site required');
   if (!acc) throw error(404, 'консоль не найдена');
-  const p = parsePeriod(url.searchParams.get('p'));
+  const p = reportPeriod(db());
   try {
     return json({ rows: await siteKeysForPeriod(db(), acc, site, p), period: p });
   } catch (e) {

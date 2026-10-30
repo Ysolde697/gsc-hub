@@ -58,3 +58,12 @@ export function selectionKey(db: Db): string {
   const g = userGroup(db, uid);
   return `${a ? [...a].sort().join(',') : '*'}|${g === undefined ? '*' : g ?? '-'}`;
 }
+
+/** Период отчётов из шапки (ключ: 'today' | 'yesterday' | '7' | … | 'YYYY-MM-DD_YYYY-MM-DD'). */
+export function userPeriodKey(db: Db, uid: string | null = currentUserId()): string | null {
+  return uid ? (read(db, uid, 'period') ?? null) : null;
+}
+
+export function setUserPeriodKey(db: Db, uid: string, key: string): void {
+  write(db, uid, 'period', key);
+}

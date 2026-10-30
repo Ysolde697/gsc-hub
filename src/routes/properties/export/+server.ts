@@ -4,27 +4,24 @@ import { db } from '$lib/server/db';
 import { getAccount } from '$lib/server/accounts';
 import { searchAnalyticsPages } from '$lib/server/google';
 import { csvHeader, csvLine } from '$lib/server/csv';
-import { completedDayRange } from '$lib/server/gsc-calendar';
+import { reportPeriod } from '$lib/server/report-period';
 import { requireAdmin } from '$lib/server/guard';
 
 export const GET: RequestHandler = async ({ url, locals, request }) => {
   requireAdmin(locals);
   const accountId = url.searchParams.get('account');
   const siteUrl = url.searchParams.get('site');
-  const days = Number(url.searchParams.get('days') ?? '28');
   const dim = url.searchParams.get('dim') ?? 'query';
 
   if (!accountId || !siteUrl) throw error(400, 'account and site required');
   if (dim !== 'query' && dim !== 'page') throw error(400, 'dim must be query|page');
-  if (!Number.isInteger(days) || days < 1 || days > 480) throw error(400, 'days 1..480');
 
   const acc = getAccount(db(), accountId);
   if (!acc) throw error(404, 'account not found');
   if (acc.status !== 'active') throw error(409, `account is ${acc.status}; reconnect`);
 
-  // The same window the dashboard shows. Computing dates here separately is how
-  // a CSV and a screen end up disagreeing about what "28 days" means.
-  const { startDate, endDate } = completedDayRange(days);
+  // Тот же период, что в шапке и на экране.
+  const { startDate, endDate } = reportPeriod(db());
 
   const pages = searchAnalyticsPages(
     db(),

@@ -1,4 +1,5 @@
 import type { PageServerLoad } from './$types';
+import { reportPeriod } from '$lib/server/report-period';
 import { db } from '$lib/server/db';
 import { fetchDailyBreakdown } from '$lib/server/google';
 import { requireAdmin } from '$lib/server/guard';
@@ -32,7 +33,7 @@ function parseDir(raw: string | null): 'asc' | 'desc' {
 
 export const load: PageServerLoad = async ({ url, locals }) => {
   requireAdmin(locals);
-  const days = parseDays(url.searchParams.get('days'));
+  const days = reportPeriod(db()).days;
   const cols = parseCols(url.searchParams.get('cols'));
   const sort = parseSort(url.searchParams.get('sort'));
   const dir = parseDir(url.searchParams.get('dir'));

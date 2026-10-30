@@ -1,5 +1,6 @@
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
+import { reportPeriod } from '$lib/server/report-period';
 import { db } from '$lib/server/db';
 import { fetchPortfolioDaily } from '$lib/server/google';
 import { getAlgoUpdates, updatesForChart } from '$lib/server/algo-updates';
@@ -12,8 +13,8 @@ import { requireAdmin } from '$lib/server/guard';
 // blocks the main render.
 export const GET: RequestHandler = async ({ url, locals }) => {
   requireAdmin(locals);
-  const days = Number(url.searchParams.get('days') ?? '180');
-  if (!Number.isInteger(days) || days < 1 || days > 480) throw error(400, 'days 1..480');
+  // Период — из шапки; графику нужно хотя бы 7 дней.
+  const days = reportPeriod(db(), { minDays: 7 }).days;
 
   const { daily, hosts, errors } = await fetchPortfolioDaily(db(), days);
 

@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
+import { reportPeriod } from '$lib/server/report-period';
 import { db } from '$lib/server/db';
 import { fetchPortfolioDecayPages } from '$lib/server/google';
 import { listAccounts } from '$lib/server/accounts';
@@ -16,7 +17,7 @@ function parseDays(raw: string | null): number {
 // Portfolio-wide content decay. Heavier than the other tabs (2 GSC calls per site) — loaded lazily.
 export const GET: RequestHandler = async ({ url, locals }) => {
   requireAdmin(locals);
-  const days = parseDays(url.searchParams.get('days'));
+  const days = reportPeriod(db()).days;
   const { entries, errors } = await fetchPortfolioDecayPages(db(), days);
   const hidden = new Set(listHiddenSites(db()));
   const emailById = new Map(listAccounts(db()).map((a) => [a.id, a.email]));

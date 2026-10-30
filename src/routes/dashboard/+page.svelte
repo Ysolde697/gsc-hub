@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PeriodNote from '$lib/components/PeriodNote.svelte';
   import SortCaret from '$lib/components/SortCaret.svelte';
   import type { PageData } from './$types';
   import { onMount } from 'svelte';
@@ -375,23 +376,7 @@
       <h1 class="app-pagetitle">Dashboard</h1>
     </div>
     <div class="app-toolbar-right">
-      <div class="app-segmented">
-        <span class="app-segmented-label">Period</span>
-        {#each [1, 3, 7, 28, 60] as d}
-          <a class:is-active={data.days === d} href="?days={d}&cols={data.cols}&sort={data.sort}&dir={data.dir}">{d}D</a>
-        {/each}
-        <input
-          type="number"
-          min="1"
-          max="480"
-          placeholder="days"
-          value={[1, 3, 7, 28, 60].includes(data.days) ? '' : data.days}
-          class="input app-num ml-0.5 h-6 w-16 px-1.5 text-xs"
-          title="Custom day range, up to 480 (16 months)"
-          onkeydown={(e) => { if (e.key === 'Enter') goToDays(e.currentTarget.value); }}
-          onchange={(e) => goToDays(e.currentTarget.value)}
-        />
-      </div>
+      <PeriodNote />
       <span class="app-toolbar-divider" aria-hidden="true"></span>
       <div class="app-segmented">
         <span class="app-segmented-label">Sort</span>

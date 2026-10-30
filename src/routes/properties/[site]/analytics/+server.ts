@@ -1,5 +1,6 @@
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
+import { reportPeriod } from '$lib/server/report-period';
 import { db } from '$lib/server/db';
 import { getAccount } from '$lib/server/accounts';
 import { fetchSiteQueryPages } from '$lib/server/google';
@@ -27,8 +28,8 @@ export const GET: RequestHandler = async ({ params, url, locals }) => {
 
   // Период берём из запроса: переключатель наверху страницы должен двигать и
   // эти вкладки, а не только график Overview.
-  const days = Math.floor(Number(url.searchParams.get('days') ?? '28'));
-  if (!Number.isFinite(days) || days < 1 || days > 480) throw error(400, 'days 1..480');
+  // Период — из шапки (один на все отчёты).
+  const days = reportPeriod(db()).days;
 
   const siteUrl = params.site;
   const rows = await fetchSiteQueryPages(db(), acc, siteUrl, days);

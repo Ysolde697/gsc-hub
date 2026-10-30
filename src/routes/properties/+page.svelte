@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { page } from '$app/state';
+  import PeriodNote from '$lib/components/PeriodNote.svelte';
   import SortCaret from '$lib/components/SortCaret.svelte';
   import { onMount } from 'svelte';
   import { goto, invalidateAll } from '$app/navigation';
@@ -84,38 +86,13 @@
     }
   }
 
-  // Tracks pulseDays: re-runs on switcher clicks, and once on mount for the initial 180d.
+  // Период графика — из шапки: при его смене загрузить заново.
   $effect(() => {
+    void page.data.period?.key;
+    pulseCache.clear();
     loadPulse(pulseDays);
   });
 
-  // День над графиком: «Сегодня» (по Германии) или «Вчера» — свежие цифры,
-  // которых ещё нет в графике (там только завершённые дни).
-  type DayData = { date: string; totals: { clicks: number; impressions: number; ctr: number }; pending: boolean; startsAt: string | null; partial: boolean };
-  let pulseDay = $state<'today' | 'yesterday'>('today');
-  let dayState = $state<{ kind: 'loading' } | { kind: 'error' } | { kind: 'loaded'; data: DayData }>({ kind: 'loading' });
-  const dayCache = new Map<string, DayData>();
-  async function loadDay(day: 'today' | 'yesterday') {
-    const hit = dayCache.get(day);
-    if (hit) {
-      dayState = { kind: 'loaded', data: hit };
-      return;
-    }
-    dayState = { kind: 'loading' };
-    try {
-      const r = await fetch(`/dashboard/today?day=${day}`);
-      if (!r.ok) throw new Error();
-      const d: DayData = await r.json();
-      dayCache.set(day, d);
-      if (pulseDay === day) dayState = { kind: 'loaded', data: d };
-    } catch {
-      if (pulseDay === day) dayState = { kind: 'error' };
-    }
-  }
-  $effect(() => {
-    loadDay(pulseDay);
-  });
-  const fmtDay = (iso: string) => iso.split('-').reverse().join('.');
 
   const STORAGE_KEY = 'gsc-hub:hidden-sites';
 
@@ -1106,22 +1083,7 @@
       <p class="hidden text-xs text-ink-3 print:block">Period: last {data.days === 1 ? '24 hours' : `${data.days} days`}</p>
     </div>
     <div class="app-toolbar-right">
-      <div class="app-segmented" aria-label="Period">
-        {#each [1, 3, 7, 28, 60] as d}
-          <a class:is-active={data.days === d} href="?days={d}&sort={data.sort}&dir={data.dir}">{d}D</a>
-        {/each}
-        <input
-          type="number"
-          min="1"
-          max="480"
-          placeholder="days"
-          value={[1, 3, 7, 28, 60].includes(data.days) ? '' : data.days}
-          class="input app-num ml-1 h-6 w-16 px-1.5 text-[11.5px]"
-          title="Custom day range, up to 480 (16 months)"
-          onkeydown={(e) => { if (e.key === 'Enter') goToDays(e.currentTarget.value); }}
-          onchange={(e) => goToDays(e.currentTarget.value)}
-        />
-      </div>
+      <PeriodNote />
       <span class="app-toolbar-divider" aria-hidden="true"></span>
       <a href="/dashboard?days={data.days}" class="btn btn-ghost">Dashboard</a>
       <a href="/properties/striking?days={data.days}" class="btn btn-ghost" title="Portfolio analytics across all sites — striking distance, cannibalization, CTR, branded, decay">Portfolio</a>
@@ -1136,35 +1098,10 @@
   <div class="desk">
     <!-- Portfolio pulse — all domains combined, own period switcher, Google update bands. -->
     <section class="pane">
-      <div class="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-line px-3 py-2">
-        <div class="app-segmented" aria-label="День">
-          <button type="button" class:is-active={pulseDay === 'today'} onclick={() => (pulseDay = 'today')}>Сегодня</button>
-          <button type="button" class:is-active={pulseDay === 'yesterday'} onclick={() => (pulseDay = 'yesterday')}>Вчера</button>
-        </div>
-        {#if dayState.kind === 'loading'}
-          <span class="loading text-xs">Загружаю…</span>
-        {:else if dayState.kind === 'error'}
-          <span class="text-xs text-err">Не загрузилось <button type="button" class="btn btn-ghost btn-sm" onclick={() => { dayCache.delete(pulseDay); loadDay(pulseDay); }}>Повторить</button></span>
-        {:else}
-          {@const d = dayState.data}
-          <span class="text-sm font-semibold text-ink">{fmtDay(d.date)}</span>
-          {#if d.pending}
-            <span class="text-xs text-ink-3">Google ещё не начал этот день{d.startsAt ? ` — начнёт в ${d.startsAt}` : ''}</span>
-          {:else}
-            <div class="stat border-l-0 pl-0"><span class="stat-label">Impressions</span><span class="stat-value">{fmtNum(d.totals.impressions)}</span></div>
-            <div class="stat"><span class="stat-label">Clicks</span><span class="stat-value">{fmtNum(d.totals.clicks)}</span></div>
-            <div class="stat"><span class="stat-label">CTR</span><span class="stat-value">{fmtCtr(d.totals.ctr)}</span></div>
-            <span class="text-xs text-ink-3">данные за день ещё обновляются{d.partial ? ' · часть сайтов не ответила' : ''}</span>
-          {/if}
-        {/if}
-      </div>
+      
       <div class="pane-head">
         <span>Portfolio pulse <span class="aside ml-1 text-ink-3">all domains combined</span></span>
-        <div class="app-segmented normal-case tracking-normal" aria-label="Pulse period">
-          {#each PULSE_OPTIONS as d (d)}
-            <button type="button" class:is-active={pulseDays === d} onclick={() => (pulseDays = d)}>{d === 480 ? '16M' : d === 365 ? '1Y' : `${d}D`}</button>
-          {/each}
-        </div>
+        <PeriodNote start={pulseState.kind === 'loaded' && pulseState.data.series.length ? pulseState.data.series[0].date : undefined} end={pulseState.kind === 'loaded' && pulseState.data.series.length ? pulseState.data.series[pulseState.data.series.length - 1].date : undefined} note="графику — не меньше 7 дней" />
       </div>
       {#if pulseState.kind === 'loading'}
         <p class="loading py-16 text-center">Loading {pulseDays}-day pulse…</p>

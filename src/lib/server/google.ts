@@ -1,5 +1,6 @@
 import type { Db } from './db';
 import { gscCached } from './gsc-cache';
+import { als } from './request-context';
 import { addCalendarDays, gscToday, completedDayRange, localToday, gscDayStartsAtLocal } from './gsc-calendar';
 import { INSPECT_LIMIT, mapSettledLimit } from './concurrency';
 import { siteCountries } from '$lib/utils/site-geo';
@@ -225,8 +226,13 @@ export interface SearchAnalyticsBody {
 }
 
 // One definition of "last N days", shared with the export route and anything
-// else that needs a window.
-const gscDateRange = completedDayRange;
+// else that needs a window. Если страница выставила период из шапки (свои даты,
+// «Сегодня», «Вчера»), окно той же длины берёт именно эти даты.
+function gscDateRange(days: number, now: number = Date.now()): { startDate: string; endDate: string } {
+  const r = als.getStore()?.range;
+  if (r && r.days === days) return { startDate: r.startDate, endDate: r.endDate };
+  return completedDayRange(days, now);
+}
 
 export async function searchAnalyticsQuery(
   db: Db,
@@ -1454,7 +1460,7 @@ export async function fetchQueryHosts(db: Db, days = 28): Promise<Map<string, Qu
           if (site.permissionLevel !== 'siteUnverifiedUser') pairs.push({ acc: accounts[i], site });
         });
     });
-    const { startDate, endDate } = gscDateRange(days);
+    const { startDate, endDate } = completedDayRange(days);
     const perSite = await mapSettledLimit(pairs, ({ acc, site }) =>
       searchAnalyticsQuery(db, acc, site.siteUrl, { startDate, endDate, dimensions: ['query', 'page'], rowLimit: 5000 })
     );
@@ -1500,7 +1506,7 @@ export async function fetchSiteGeos(db: Db, days = 28): Promise<Map<string, stri
           if (site.permissionLevel !== 'siteUnverifiedUser') pairs.push({ acc: accounts[i], site });
         });
     });
-    const { startDate, endDate } = gscDateRange(days);
+    const { startDate, endDate } = completedDayRange(days);
     const perSite = await mapSettledLimit(pairs, ({ acc, site }) =>
       searchAnalyticsQuery(db, acc, site.siteUrl, { startDate, endDate, dimensions: ['country'], rowLimit: 100 })
     );
@@ -1563,7 +1569,7 @@ export async function searchKeywordAcrossSites(
           else pairs.push({ acc: accounts[i], site });
         });
     });
-    const { startDate, endDate } = gscDateRange(days);
+    const { startDate, endDate } = completedDayRange(days);
     const perSite = await mapSettledLimit(pairs, ({ acc, site }) =>
       searchAnalyticsQuery(db, acc, site.siteUrl, {
         startDate,

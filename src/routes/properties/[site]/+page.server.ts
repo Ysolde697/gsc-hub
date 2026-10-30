@@ -1,5 +1,6 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
+import { reportPeriod } from '$lib/server/report-period';
 import { db } from '$lib/server/db';
 import { getAccount } from '$lib/server/accounts';
 import { fetchSiteDaily } from '$lib/server/google';
@@ -32,9 +33,9 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 
   const siteUrl = params.site;
   const savedView = getSiteViewSettings(db(), siteUrl);
-  const days = url.searchParams.has('days') ? parseDays(url.searchParams.get('days')) : savedView.days;
-  // An explicit period in a link wins; entering from Sites/Dashboard restores the saved one.
-  if (days !== savedView.days) saveSiteViewSettings(db(), siteUrl, { days });
+  // Период — из шапки (один на все отчёты). Графику нужно хотя бы 7 дней.
+  const period = reportPeriod(db(), { minDays: 7 });
+  const days = period.days;
   let daily = null;
   let dailyError: string | null = null;
   try {

@@ -1,5 +1,6 @@
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
+import { reportPeriod } from '$lib/server/report-period';
 import { db } from '$lib/server/db';
 import { getAccount } from '$lib/server/accounts';
 import { fetchSiteDecayPages } from '$lib/server/google';
@@ -14,8 +15,7 @@ export const GET: RequestHandler = async ({ params, url, locals }) => {
   const acc = getAccount(db(), accId);
   if (!acc) throw error(404, 'account not found');
 
-  const days = Math.floor(Number(url.searchParams.get('days') ?? '28'));
-  if (!Number.isFinite(days) || days < 1 || days > 480) throw error(400, 'days 1..480');
+  const days = reportPeriod(db()).days;
 
   const { recent, prior } = await fetchSiteDecayPages(db(), acc, params.site, days);
   return json({ days, decay: computeDecay(recent.map(rowToPage), prior.map(rowToPage)) });

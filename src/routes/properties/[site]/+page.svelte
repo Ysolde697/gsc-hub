@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { page } from '$app/state';
+  import PeriodNote from '$lib/components/PeriodNote.svelte';
   import type { PageData } from './$types';
   import { invalidateAll } from '$app/navigation';
   import { untrack } from 'svelte';
@@ -453,7 +455,9 @@
   // Смена периода наверху страницы — это навигация по тому же роуту: компонент
   // остаётся, и без сброса вкладки продолжали бы показывать прежние 28 дней.
   let lastSite = untrack(() => `${data.siteUrl}|${data.accId}`);
-  let lastDays = untrack(() => data.days);
+  // Ключ периода из шапки: свои даты той же длины — тоже смена периода.
+  const periodKey = () => `${page.data.period?.key ?? ''}|${data.days}`;
+  let lastDays: string | number = untrack(periodKey);
   $effect(() => {
     if (`${data.siteUrl}|${data.accId}` !== lastSite) {
       lastSite = `${data.siteUrl}|${data.accId}`;
@@ -463,8 +467,8 @@
       customOpen = false; selectedPairs = new Set(); buyRows = null;
       lastDays = -1;
     }
-    if (data.days === lastDays) return;
-    lastDays = data.days;
+    if (periodKey() === lastDays) return;
+    lastDays = periodKey();
     analytics = null;
     analyticsErr = null;
     decay = null;
@@ -653,11 +657,7 @@
         </div>
 
         <div class="flex flex-wrap items-center gap-2 border-b border-line px-3 py-1.5">
-          <div class="app-segmented" aria-label="Period">
-            {#each [28, 60, 90, 180, 365, 480] as d}
-              <a class:is-active={data.days === d} href={daysHref(d)}>{d === 480 ? '16M' : d === 365 ? '1Y' : `${d}D`}</a>
-            {/each}
-          </div>
+          <PeriodNote note="графику — не меньше 7 дней" />
           {#if data.algoSource === 'builtin'}
             <span class="text-[11px] text-ink-3">Update feed unreachable — built-in update list</span>
           {/if}

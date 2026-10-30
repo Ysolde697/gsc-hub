@@ -1,4 +1,5 @@
 import type { PageServerLoad } from './$types';
+import { reportPeriod } from '$lib/server/report-period';
 import { db } from '$lib/server/db';
 import { fetchPerSiteQueries } from '$lib/server/google';
 import { listHiddenSites } from '$lib/server/hidden';
@@ -91,7 +92,7 @@ const TTL_MS = 10 * 60 * 1000;
 // Striking distance, Cannibalization, CTR benchmark and Branded split. (Decay is heavier — a
 // separate 2-window fan-out — and loads lazily via ./decay.)
 function buildPortfolio(days: number): Promise<PortfolioData> {
-  return gscCached(`portfolio:${days}:${selectionKey(db())}`, () => computePortfolio(days), TTL_MS);
+  return gscCached(`portfolio:${days}:${reportPeriod(db()).startDate}:${selectionKey(db())}`, () => computePortfolio(days), TTL_MS);
 }
 
 async function computePortfolio(days: number): Promise<PortfolioData> {
@@ -229,7 +230,8 @@ async function computePortfolio(days: number): Promise<PortfolioData> {
 
 export const load: PageServerLoad = ({ url, locals }) => {
   requireAdmin(locals);
-  const days = parseDays(url.searchParams.get('days'));
+  const period = reportPeriod(db());
+  const days = period.days;
   const tabParam = url.searchParams.get('tab');
   const initialTab = (TABS as readonly string[]).includes(tabParam ?? '') ? tabParam! : 'striking';
 
