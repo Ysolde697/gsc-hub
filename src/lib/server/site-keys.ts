@@ -14,7 +14,8 @@ export const PERIODS = ['today', 'yesterday', '7', '28', '90', '180', '480'] as 
 export type PeriodKey = (typeof PERIODS)[number];
 
 export interface Period {
-  key: PeriodKey;
+  /** Готовый вариант или свои даты «2026-10-01_2026-10-15». */
+  key: PeriodKey | string;
   startDate: string;
   endDate: string;
   /** Сколько дней в периоде — для пересчёта частотности на месяц. */
@@ -24,7 +25,27 @@ export interface Period {
   startsAt: string | null;
 }
 
+const CUSTOM = /^(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})$/;
+
+/** Свои даты: с–по, не позже сегодняшнего дня и не дальше 16 месяцев назад. */
+function customPeriod(raw: string, now: number): Period | null {
+  const m = CUSTOM.exec(raw);
+  if (!m) return null;
+  let [, a, b] = m;
+  if (Number.isNaN(Date.parse(a + 'T00:00:00Z')) || Number.isNaN(Date.parse(b + 'T00:00:00Z'))) return null;
+  if (a > b) [a, b] = [b, a];
+  const today = localToday(now);
+  const oldest = addCalendarDays(today, -485);
+  if (b > today) b = today;
+  if (a < oldest) a = oldest;
+  if (a > b) return null;
+  const days = Math.round((Date.parse(b + 'T00:00:00Z') - Date.parse(a + 'T00:00:00Z')) / 86400_000) + 1;
+  return { key: `${a}_${b}`, startDate: a, endDate: b, days, pending: gscToday(now) < b && a === b, startsAt: a === b ? gscDayStartsAtLocal(b, now) : null };
+}
+
 export function parsePeriod(raw: string | null, now: number = Date.now()): Period {
+  const custom = raw ? customPeriod(raw, now) : null;
+  if (custom) return custom;
   const key = (PERIODS as readonly string[]).includes(raw ?? '') ? (raw as PeriodKey) : '28';
   if (key === 'today' || key === 'yesterday') {
     const d = key === 'today' ? localToday(now) : addCalendarDays(localToday(now), -1);

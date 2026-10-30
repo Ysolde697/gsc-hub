@@ -4,6 +4,7 @@
   import { siteHostname } from '$lib/utils/url-filters';
   import OtherSitesInline from '$lib/components/OtherSitesInline.svelte';
   import SiteKeysPanel from '$lib/components/SiteKeysPanel.svelte';
+  import PeriodPicker from '$lib/components/PeriodPicker.svelte';
   import SortTh from '$lib/components/SortTh.svelte';
   import SortCaret from '$lib/components/SortCaret.svelte';
   import { TableSort } from '$lib/table-sort.svelte';
@@ -103,7 +104,7 @@
   let statPeriod = $state('28');
   try {
     const v = localStorage.getItem(PERIOD_KEY);
-    if (v && STAT_PERIODS.some(([k]) => k === v)) statPeriod = v;
+    if (v && (STAT_PERIODS.some(([k]) => k === v) || /^\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}$/.test(v))) statPeriod = v;
   } catch {
     /* без памяти — 28 дней */
   }
@@ -364,11 +365,7 @@
           <div class="border-b border-line">
             <div class="flex flex-wrap items-center gap-3 px-3 pt-3">
               <span class="text-xs font-semibold uppercase tracking-wide text-ink-3">Сайты группы</span>
-              <div class="app-segmented" role="group" aria-label="Период статистики">
-                {#each STAT_PERIODS as [v, label] (v)}
-                  <button type="button" class:is-active={statPeriod === v} onclick={() => setStatPeriod(v)}>{label}</button>
-                {/each}
-              </div>
+              <PeriodPicker value={statPeriod} onchange={setStatPeriod} />
               <span class="text-xs text-ink-3">{statsLoading ? 'Загружаю…' : statsRange}</span>
             </div>
             <table class="app-table">

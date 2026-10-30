@@ -2,12 +2,12 @@
   // «Кнопки»: сколько раз на ваших сайтах нажали кнопки и отправили форму
   // заказа, рядом с кликами из Google — видно, как шаблон доводит до заказа.
   import { goto } from '$app/navigation';
+  import PeriodPicker from '$lib/components/PeriodPicker.svelte';
   import { enhance } from '$app/forms';
   import SortTh from '$lib/components/SortTh.svelte';
   import { TableSort } from '$lib/table-sort.svelte';
 
   let { data } = $props();
-  const PERIODS: [string, string][] = [['today', 'Сегодня'], ['yesterday', 'Вчера'], ['7', '7 дней'], ['28', '28 дней'], ['90', '3 мес'], ['180', '6 мес'], ['480', '16 мес']];
   const KIND: Record<string, string> = { view: 'Просмотр', submit: 'Дошёл до оплаты', button: 'Кнопка', out: 'Ссылка на другой сайт', link: 'Обычная ссылка' };
   let copied = $state(false);
   let showCode = $state(false);
@@ -125,11 +125,7 @@
 
     <div class="flex flex-wrap items-center gap-3 border-b border-line px-3 py-2">
       <h1 class="text-base font-semibold">Кнопки</h1>
-      <div class="app-segmented" role="group" aria-label="Период">
-        {#each PERIODS as [v, label] (v)}
-          <button type="button" class:is-active={data.period.key === v} onclick={() => goto(`?p=${v}`, { keepFocus: true, noScroll: true })}>{label}</button>
-        {/each}
-      </div>
+      <PeriodPicker value={data.period.key} onchange={(v) => goto(`?p=${v}`, { keepFocus: true, noScroll: true })} />
       <span class="text-xs text-ink-3">{periodLabel}</span>
       <span class="text-xs text-ink-3">· просмотров {fmt(totals.v)} · нажатий кнопок {fmt(totals.b)} · дошли до оплаты {fmt(totals.s)}</span>
       <label class="ml-auto flex items-center gap-1 text-xs text-ink-2"><input type="checkbox" bind:checked={withLinks} /> показывать и обычные ссылки</label>
