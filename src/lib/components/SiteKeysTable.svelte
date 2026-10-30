@@ -14,7 +14,7 @@
   import { otherGroups, gi, activeGroup, itemKey, type OtherOwner, type OtherLink } from '$lib/group-items.svelte';
 
   type Row = { query: string; page: string; position: number; impressions: number; clicks: number; ctr: number };
-  let { siteUrl, accountId, period }: { siteUrl: string; accountId: string; period: string } = $props();
+  let { siteUrl, accountId, period, siteTotals = null }: { siteUrl: string; accountId: string; period: string; siteTotals?: { clicks: number; impressions: number } | null } = $props();
 
   let rows = $state<Row[]>([]);
   let loading = $state(true);
@@ -87,6 +87,14 @@
     })
   );
   const totals = $derived(filtered.reduce((a, r) => ({ impressions: a.impressions + r.impressions, clicks: a.clicks + r.clicks }), { impressions: 0, clicks: 0 }));
+  // Google не показывает редкие («анонимные») запросы: их клики и показы есть
+  // в итоге сайта, но не в списке ключей. Показываем разницу, чтобы цифры сходились.
+  const hidden = $derived.by(() => {
+    if (!siteTotals || loading || err) return null;
+    const all = rows.reduce((a, r) => ({ impressions: a.impressions + r.impressions, clicks: a.clicks + r.clicks }), { impressions: 0, clicks: 0 });
+    const c = Math.max(0, siteTotals.clicks - all.clicks), i = Math.max(0, siteTotals.impressions - all.impressions);
+    return c || i ? { clicks: c, impressions: i } : null;
+  });
 
   const visibleQs = $derived([...new Set(filtered.map((r) => r.query))]);
   const pickedQs = $derived(visibleQs.filter((q) => picked.has(q)));
@@ -111,6 +119,7 @@
     </div>
     {#if !loading && !err}
       <span class="text-ink-3">{fmt(filtered.length)} строк · {fmt(totals.impressions)} показов · {fmt(totals.clicks)} кликов</span>
+      {#if hidden}<span class="rounded bg-warn-t px-1.5 py-0.5 text-ink-2" title="Google скрывает редкие запросы (их ищут единицы людей) ради приватности. Их клики и показы входят в итог сайта, но ключей не видно — так же и в самой Search Console.">Скрыто Google: {fmt(hidden.clicks)} кликов · {fmt(hidden.impressions)} показов</span>{/if}
       <span class="flex-1"></span>
       <button type="button" class="btn btn-sec btn-sm" disabled={vols.checking || !filtered.length} title="Точная частотность от Google Ads по ключам в таблице (с учётом фильтра)" onclick={checkVolumes}>{vols.checking ? 'Проверяю…' : pickedQs.length ? `Частотность отмеченных в DataForSEO (${pickedQs.length})` : `Частотность в DataForSEO — все (${visibleQs.length})`}</button>
       {#if pickedQs.length}<button type="button" class="btn btn-ghost btn-sm" onclick={() => (picked = new Set())}>Снять отметки</button>{/if}

@@ -103,7 +103,7 @@
                 <tr class="bg-sunk hover:bg-sunk">
                   <td colspan="7" class="px-3">
                     {#key data.period.key}
-                      <SiteKeysTable siteUrl={s.siteUrl} accountId={s.accountId} period={data.period.key} />
+                      <SiteKeysTable siteUrl={s.siteUrl} accountId={s.accountId} period={data.period.key} siteTotals={s.error ? null : { clicks: s.clicks, impressions: s.impressions }} />
                     {/key}
                   </td>
                 </tr>
