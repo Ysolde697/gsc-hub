@@ -42,15 +42,9 @@
   const todayBySite = $derived(new Map((today?.bySite ?? []).map((t) => [`${t.accountId}|${t.siteUrl}`, t])));
   let todayFailed = $state(false);
 
-  // Today is fetched on its own, outside page data, so Refresh calls it again.
+  // Отдельного блока «Сегодня» нет: период — один, в шапке.
   function loadToday() {
-    todayFailed = false;
-    return fetch('/dashboard/today')
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
-      .then((t: Today) => { today = t; })
-      // Stale numbers must not pass for today's: a failed reload clears them
-      // so the block says it is unavailable.
-      .catch(() => { today = null; todayFailed = true; });
+    return Promise.resolve();
   }
 
   let refreshError = $state<string | null>(null);
@@ -234,7 +228,6 @@
   {@const worst = Math.max(-(dC ?? 0), -(dI ?? 0), 0)}
   {@const isFav = favs.has(keyOf(e))}
   {@const isHidden = hidden.has(keyOf(e))}
-  {@const todayHere = todayBySite.get(keyOf(e))}
   {@const market = marketOf(e.siteUrl)}
   {@const domain = siteDomain(e.siteUrl)}
   <article
@@ -259,9 +252,7 @@
             onerror={(ev) => ((ev.currentTarget as HTMLImageElement).style.display = 'none')}
           />
           <span class="pii truncate text-[13px] font-semibold text-ink">{domain}</span>
-          {#if todayHere}
-            <span class="badge badge-ok shrink-0 px-1 py-0 text-[10px]" title="Сегодня (день ещё идёт): {todayHere.impressions} показов, {todayHere.clicks} кликов">сегодня {fmtNum(todayHere.impressions)}</span>
-          {/if}
+
         </div>
         <div class="flex min-w-0 items-center gap-1.5 text-[11px] text-ink-3">
           {#if market}
@@ -420,49 +411,6 @@
   </header>
   {#if refreshError}<p class="app-errors">{refreshError}</p>{/if}
 
-  <section class="pane mb-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 px-3 py-2">
-    <div class="stat-label">
-      Сегодня{#if today}<span class="app-num normal-case tracking-normal"> · {today.date.split('-').reverse().join('.')}</span>{/if}
-    </div>
-    {#if today}
-      <div class="stat">
-        <span class="stat-label">Clicks</span>
-        <span class="stat-value pii">{fmtNum(today.totals.clicks)}</span>
-      </div>
-      <div class="stat">
-        <span class="stat-label">Impressions</span>
-        <span class="stat-value pii">{fmtNum(today.totals.impressions)}</span>
-      </div>
-      <div class="text-[11px] text-ink-3">
-        {#if today.pending}Google начнёт считать этот день в {today.startsAt ?? '08:00–09:00'} по Германии (его сутки — по Калифорнии){:else}день ещё идёт — без сравнения{/if}
-      </div>
-      {#if today.bySite?.length}
-        <div class="flex w-full flex-wrap items-center gap-1 text-[11px]">
-          <span class="text-ink-3">сегодня по сайтам:</span>
-          {#each today.bySite.slice(0, 20) as t (t.accountId + t.siteUrl)}
-            <a
-              class="pii rounded bg-sunk px-1.5 py-0.5 text-ink-2 hover:bg-acc-t hover:text-acc"
-              href="/properties/{encodeURIComponent(t.siteUrl)}?acc={encodeURIComponent(t.accountId)}"
-              title="Сегодня: {fmtNum(t.impressions)} показов, {fmtNum(t.clicks)} кликов"
-            >{t.siteUrl.replace(/^sc-domain:|^https?:\/\/(www\.)?|\/$/g, '')} · <b>{fmtNum(t.impressions)}</b>{t.clicks ? ` · ${fmtNum(t.clicks)} кл.` : ''}</a>
-          {/each}
-          {#if today.bySite.length > 20}<span class="text-ink-3">и ещё {today.bySite.length - 20}</span>{/if}
-        </div>
-      {/if}
-      {#if today.partial}
-        <span
-          class="badge badge-warn"
-          title={today.errors.slice(0, 10).map((e) => e.reason).join('\n')}
-        >
-          partial — {today.errors.length} read {today.errors.length === 1 ? 'error' : 'errors'}
-        </span>
-      {/if}
-    {:else if todayFailed}
-      <div class="text-[11px] text-ink-3">unavailable</div>
-    {:else}
-      <div class="loading text-[11px]">loading…</div>
-    {/if}
-  </section>
 
   {#if data.errors.length > 0}
     <div class="app-errors">

@@ -1101,10 +1101,9 @@
       
       <div class="pane-head">
         <span>Portfolio pulse <span class="aside ml-1 text-ink-3">all domains combined</span></span>
-        <PeriodNote start={pulseState.kind === 'loaded' && pulseState.data.series.length ? pulseState.data.series[0].date : undefined} end={pulseState.kind === 'loaded' && pulseState.data.series.length ? pulseState.data.series[pulseState.data.series.length - 1].date : undefined} note="графику — не меньше 7 дней" />
       </div>
       {#if pulseState.kind === 'loading'}
-        <p class="loading py-16 text-center">Loading {pulseDays}-day pulse…</p>
+        <p class="loading py-16 text-center">Загружаю…</p>
       {:else if pulseState.kind === 'error'}
         <div class="flex items-center justify-center gap-2 py-16">
           <span class="text-err">{pulseState.message}</span>
@@ -1120,6 +1119,9 @@
           {/if}
         </div>
         <div class="px-3 pb-2 pt-2">
+          {#if pulseState.data.series.length < 2}
+            <p class="py-6 text-center text-xs text-ink-3">За один день график не строится — цифры за этот день выше. Чтобы увидеть динамику, выберите в шапке период подлиннее.</p>
+          {:else}
           <TrendChart
             points={pulseState.data.series}
             updates={pulseState.data.updates}
@@ -1128,6 +1130,7 @@
             bind:showUpdates={showPulseUpdates}
             bind:showEvents={showPulseEvents}
           />
+          {/if}
         </div>
       {/if}
     </section>
@@ -1149,7 +1152,7 @@
     <!-- Watchlist: every site of every connected account for the selected period. -->
     <section class="pane min-w-0">
       <div class="pane-head">
-        <span>Watchlist <span class="aside ml-1 text-ink-3">{data.days === 1 ? '24 hours' : `${data.days} days`}</span></span>
+        <span>Watchlist</span>
         {#if hidden.size > 0}
           <button type="button" class="btn btn-ghost btn-sm normal-case tracking-normal" onclick={() => showHidden = !showHidden}>
             {showHidden ? 'Hide hidden again' : `Show ${hidden.size} hidden site${hidden.size === 1 ? '' : 's'}`}

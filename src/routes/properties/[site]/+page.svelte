@@ -657,7 +657,7 @@
         </div>
 
         <div class="flex flex-wrap items-center gap-2 border-b border-line px-3 py-1.5">
-          <PeriodNote note="графику — не меньше 7 дней" />
+          <PeriodNote />
           {#if data.algoSource === 'builtin'}
             <span class="text-[11px] text-ink-3">Update feed unreachable — built-in update list</span>
           {/if}
@@ -667,7 +667,11 @@
           {#if data.dailyError}
             <p class="text-err py-10 text-center">Failed to load: {data.dailyError}</p>
           {:else if data.daily}
-            <TrendChart points={data.daily.series} updates={data.algoUpdates} events={data.siteEvents} height={340} />
+            {#if data.daily.series.length < 2}
+              <p class="py-6 text-center text-xs text-ink-3">За один день график не строится. Чтобы увидеть динамику, выберите в шапке период подлиннее.</p>
+            {:else}
+              <TrendChart points={data.daily.series} updates={data.algoUpdates} events={data.siteEvents} height={340} />
+            {/if}
           {/if}
         </div>
       </section>

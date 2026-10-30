@@ -33,8 +33,8 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 
   const siteUrl = params.site;
   const savedView = getSiteViewSettings(db(), siteUrl);
-  // Период — из шапки (один на все отчёты). Графику нужно хотя бы 7 дней.
-  const period = reportPeriod(db(), { minDays: 7 });
+  // Период — из шапки (один на все отчёты).
+  const period = reportPeriod(db());
   const days = period.days;
   let daily = null;
   let dailyError: string | null = null;

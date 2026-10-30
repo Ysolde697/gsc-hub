@@ -13,8 +13,8 @@ import { requireAdmin } from '$lib/server/guard';
 // blocks the main render.
 export const GET: RequestHandler = async ({ url, locals }) => {
   requireAdmin(locals);
-  // Период — из шапки; графику нужно хотя бы 7 дней.
-  const days = reportPeriod(db(), { minDays: 7 }).days;
+  // Период — из шапки, тот же, что у всей страницы.
+  const days = reportPeriod(db()).days;
 
   const { daily, hosts, errors } = await fetchPortfolioDaily(db(), days);
 
