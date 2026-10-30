@@ -275,6 +275,17 @@ CREATE TABLE IF NOT EXISTS button_clicks (
 );
 CREATE INDEX IF NOT EXISTS idx_button_clicks_host_day ON button_clicks (host, day);
 
+-- Выбор в шапке у каждого пользователя свой: консоли (kind='accounts',
+-- value — JSON-список id) и группа-фильтр (kind='group', value — id или '').
+-- Нет строки — действует общий выбор (google_accounts.in_use, site_groups.active).
+CREATE TABLE IF NOT EXISTS user_selection (
+  user_id    TEXT NOT NULL,
+  kind       TEXT NOT NULL,
+  value      TEXT NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, kind)
+);
+
 -- Сколько секунд страницы были открыты на экране (сумма за день).
 -- Среднее время = seconds / просмотры (kind = 'view' в button_clicks).
 CREATE TABLE IF NOT EXISTS page_time (

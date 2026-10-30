@@ -1,4 +1,5 @@
 import type { Db } from './db';
+import { currentUserId, setUserAccounts, userAccounts } from './user-selection';
 
 export type AccountStatus = 'active' | 'revoked' | 'error';
 
@@ -42,14 +43,12 @@ export function upsertAccount(db: Db, a: UpsertInput): void {
 }
 
 export function listAccounts(db: Db, ownerId?: string): AccountRow[] {
-  if (ownerId) {
-    return db
-      .prepare('SELECT * FROM google_accounts WHERE owner_id = ? ORDER BY added_at ASC, rowid ASC')
-      .all(ownerId) as AccountRow[];
-  }
-  return db
-    .prepare('SELECT * FROM google_accounts ORDER BY added_at ASC, rowid ASC')
-    .all() as AccountRow[];
+  const rows = ownerId
+    ? (db.prepare('SELECT * FROM google_accounts WHERE owner_id = ? ORDER BY added_at ASC, rowid ASC').all(ownerId) as AccountRow[])
+    : (db.prepare('SELECT * FROM google_accounts ORDER BY added_at ASC, rowid ASC').all() as AccountRow[]);
+  // Галочка «Использовать» — своя у каждого вошедшего пользователя.
+  const mine = userAccounts(db);
+  return mine ? rows.map((a) => ({ ...a, in_use: mine.has(a.id) ? 1 : 0 })) : rows;
 }
 
 /**
@@ -65,11 +64,24 @@ export function listReportAccounts(db: Db): AccountRow[] {
 
 /** Включить или выключить одну консоль. */
 export function setAccountInUse(db: Db, id: string, inUse: boolean): void {
+  const uid = currentUserId();
+  if (uid) {
+    const on = new Set(listAccounts(db).filter((a) => a.in_use !== 0).map((a) => a.id));
+    if (inUse) on.add(id);
+    else on.delete(id);
+    setUserAccounts(db, uid, on);
+    return;
+  }
   db.prepare('UPDATE google_accounts SET in_use = ? WHERE id = ?').run(inUse ? 1 : 0, id);
 }
 
 /** Оставить включёнными ровно эти консоли (пустой список выключает все). */
 export function setAccountsInUse(db: Db, ids: string[]): void {
+  const uid = currentUserId();
+  if (uid) {
+    setUserAccounts(db, uid, ids);
+    return;
+  }
   const keep = new Set(ids);
   const update = db.prepare('UPDATE google_accounts SET in_use = ? WHERE id = ?');
   db.transaction(() => {

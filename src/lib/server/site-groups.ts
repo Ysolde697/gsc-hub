@@ -1,5 +1,6 @@
 import type { Db } from './db';
 import { siteHostname } from '$lib/utils/url-filters';
+import { currentUserId, setUserGroup, userGroup } from './user-selection';
 
 // Группы сайтов: именованные списки доменов. Одну группу можно выбрать
 // фильтром в шапке — тогда все общие отчёты и MCP видят только её сайты.
@@ -69,10 +70,12 @@ export function listSiteGroups(db: Db): SiteGroup[] {
     hosts.set(r.group_id, [...(hosts.get(r.group_id) ?? []), r.host]);
     if (r.done_at) done.set(r.group_id, [...(done.get(r.group_id) ?? []), r.host]);
   }
+  // Группа-фильтр в шапке — своя у каждого вошедшего пользователя.
+  const mine = userGroup(db);
   return groups.map((g) => ({
     id: g.id,
     name: g.name,
-    active: g.active === 1,
+    active: mine === undefined ? g.active === 1 : g.id === mine,
     hosts: hosts.get(g.id) ?? [],
     done: done.get(g.id) ?? [],
     items: g.items,
@@ -150,6 +153,11 @@ export function getSiteGroup(db: Db, id: number): SiteGroup | undefined {
 
 /** Выбрать группу фильтром (null — все сайты). */
 export function setActiveSiteGroup(db: Db, id: number | null): void {
+  const uid = currentUserId();
+  if (uid) {
+    setUserGroup(db, uid, id);
+    return;
+  }
   db.transaction(() => {
     db.prepare('UPDATE site_groups SET active = 0 WHERE active = 1').run();
     if (id !== null) db.prepare('UPDATE site_groups SET active = 1 WHERE id = ?').run(id);
@@ -161,9 +169,13 @@ export function setActiveSiteGroup(db: Db, id: number | null): void {
  * показывают все сайты.
  */
 export function activeGroupHosts(db: Db): Set<string> | null {
-  const g = db.prepare('SELECT id FROM site_groups WHERE active = 1 LIMIT 1').get() as
-    | { id: number }
-    | undefined;
+  const mine = userGroup(db);
+  const g =
+    mine === undefined
+      ? (db.prepare('SELECT id FROM site_groups WHERE active = 1 LIMIT 1').get() as { id: number } | undefined)
+      : mine === null
+        ? undefined
+        : (db.prepare('SELECT id FROM site_groups WHERE id = ?').get(mine) as { id: number } | undefined);
   if (!g) return null;
   const rows = db.prepare('SELECT host FROM site_group_hosts WHERE group_id = ?').all(g.id) as {
     host: string;

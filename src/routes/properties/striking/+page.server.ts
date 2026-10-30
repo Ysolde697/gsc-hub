@@ -6,6 +6,7 @@ import { getBrandedTerms } from '$lib/server/branded';
 import { filterPatterns, queryHidden } from '$lib/server/filters';
 import { requireAdmin } from '$lib/server/guard';
 import { gscCached } from '$lib/server/gsc-cache';
+import { selectionKey } from '$lib/server/user-selection';
 import { purchaseSummary } from '$lib/server/magiclinks-purchases';
 import { anyMagicProviderConfigured } from '$lib/server/magiclinks-providers';
 import {
@@ -90,7 +91,7 @@ const TTL_MS = 10 * 60 * 1000;
 // Striking distance, Cannibalization, CTR benchmark and Branded split. (Decay is heavier — a
 // separate 2-window fan-out — and loads lazily via ./decay.)
 function buildPortfolio(days: number): Promise<PortfolioData> {
-  return gscCached(`portfolio:${days}`, () => computePortfolio(days), TTL_MS);
+  return gscCached(`portfolio:${days}:${selectionKey(db())}`, () => computePortfolio(days), TTL_MS);
 }
 
 async function computePortfolio(days: number): Promise<PortfolioData> {
