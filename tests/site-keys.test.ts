@@ -20,4 +20,8 @@ describe('parsePeriod', () => {
     expect(parsePeriod('2026-10-20_2026-12-31', now)).toMatchObject({ endDate: '2026-10-29', days: 10 });
     expect(parsePeriod('2026-13-45_2026-10-01', now).key).toBe('28');
   });
+  it('для счётчика «N дней» включают сегодня', () => {
+    expect(parsePeriod('28', now, { includeToday: true })).toMatchObject({ startDate: '2026-10-02', endDate: '2026-10-29', days: 28 });
+    expect(parsePeriod('7', now, { includeToday: true })).toMatchObject({ startDate: '2026-10-23', endDate: '2026-10-29' });
+  });
 });

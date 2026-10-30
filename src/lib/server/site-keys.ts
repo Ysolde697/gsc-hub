@@ -43,7 +43,11 @@ function customPeriod(raw: string, now: number): Period | null {
   return { key: `${a}_${b}`, startDate: a, endDate: b, days, pending: gscToday(now) < b && a === b, startsAt: a === b ? gscDayStartsAtLocal(b, now) : null };
 }
 
-export function parsePeriod(raw: string | null, now: number = Date.now()): Period {
+/**
+ * includeToday: «N дней» = последние N дней вместе с сегодняшним (для счётчика
+ * кнопок, который пишет данные сразу). Иначе — N завершённых дней, как в Google.
+ */
+export function parsePeriod(raw: string | null, now: number = Date.now(), opts: { includeToday?: boolean } = {}): Period {
   const custom = raw ? customPeriod(raw, now) : null;
   if (custom) return custom;
   const key = (PERIODS as readonly string[]).includes(raw ?? '') ? (raw as PeriodKey) : '28';
@@ -52,6 +56,10 @@ export function parsePeriod(raw: string | null, now: number = Date.now()): Perio
     return { key, startDate: d, endDate: d, days: 1, pending: gscToday(now) < d, startsAt: gscDayStartsAtLocal(d, now) };
   }
   const days = Number(key);
+  if (opts.includeToday) {
+    const endDate = localToday(now);
+    return { key, startDate: addCalendarDays(endDate, -(days - 1)), endDate, days, pending: false, startsAt: null };
+  }
   const { startDate, endDate } = completedDayRange(days, now);
   return { key, startDate, endDate, days, pending: false, startsAt: null };
 }

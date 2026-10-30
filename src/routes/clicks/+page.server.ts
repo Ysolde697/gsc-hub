@@ -9,7 +9,8 @@ import { activeGroupHosts } from '$lib/server/site-groups';
 
 export const load: PageServerLoad = async ({ locals, url }) => {
   requireAdmin(locals);
-  const period = parsePeriod(url.searchParams.get('p'));
+  // Счётчик пишет данные сразу — «N дней» здесь включают сегодня.
+  const period = parsePeriod(url.searchParams.get('p'), Date.now(), { includeToday: true });
   const clicks = clicksForRange(db(), period.startDate, period.endDate);
   // Клики из Google за тот же период — по домену (у домена бывает 2 property: берём бо́льшую).
   const { sites, errors } = await sitesForPeriod(db(), period);
