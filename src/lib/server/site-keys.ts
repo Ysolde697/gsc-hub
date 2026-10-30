@@ -2,8 +2,9 @@
 // у каждого — все ключи. Период: сегодня / вчера (по Германии, свежие данные)
 // или последние N завершённых дней.
 import type { Db } from './db';
-import { listReportAccounts, type AccountRow } from './accounts';
-import { listSitesForAccount, searchAnalyticsQuery, type SiteRow } from './google';
+import { listAccounts, listReportAccounts, type AccountRow } from './accounts';
+import { listAllKnownSites, listSitesForAccount, searchAnalyticsQuery, type SiteRow } from './google';
+import { siteHostname } from '$lib/utils/url-filters';
 import { addCalendarDays, completedDayRange, gscToday, localToday, gscDayStartsAtLocal } from './gsc-calendar';
 import { mapSettledLimit } from './concurrency';
 import { rowToQueryPage, type QueryPageRow } from './analytics';
@@ -84,4 +85,48 @@ export async function siteKeysForPeriod(db: Db, acc: AccountRow, siteUrl: string
     rowLimit: 25000
   });
   return dropFilteredQueries(rows.map(rowToQueryPage), filterPatterns(db), (r) => r.query);
+}
+
+/**
+ * Итоги за период по доменам — из всех консолей, без галочек и группы
+ * (страница группы). У домена может быть несколько property: берём ту, где
+ * показов больше.
+ */
+export async function hostTotalsForPeriod(
+  db: Db,
+  hosts: string[],
+  p: Period
+): Promise<Record<string, { clicks: number; impressions: number; ctr: number; position: number | null }>> {
+  const want = new Set(hosts);
+  const { sites } = await listAllKnownSites(db);
+  const accounts = new Map(listAccounts(db).map((a) => [a.id, a]));
+  const pairs: { acc: AccountRow; site: SiteRow; host: string }[] = [];
+  for (const s of sites) {
+    if (s.permissionLevel === 'siteUnverifiedUser') continue;
+    let host: string;
+    try {
+      host = siteHostname(s.siteUrl);
+    } catch {
+      continue;
+    }
+    const acc = accounts.get(s.accountId);
+    if (want.has(host) && acc) pairs.push({ acc, site: s, host });
+  }
+  const res = await mapSettledLimit(pairs, ({ acc, site }) =>
+    searchAnalyticsQuery(db, acc, site.siteUrl, { startDate: p.startDate, endDate: p.endDate, dimensions: ['date'] })
+  );
+  const out: Record<string, { clicks: number; impressions: number; ctr: number; position: number | null }> = {};
+  res.forEach((r, i) => {
+    if (r.status !== 'fulfilled') return;
+    let clicks = 0, impressions = 0, posSum = 0;
+    for (const x of r.value) {
+      clicks += x.clicks;
+      impressions += x.impressions;
+      posSum += x.position * x.impressions;
+    }
+    const h = pairs[i].host;
+    if (!out[h] || impressions > out[h].impressions)
+      out[h] = { clicks, impressions, ctr: impressions ? clicks / impressions : 0, position: impressions ? posSum / impressions : null };
+  });
+  return out;
 }

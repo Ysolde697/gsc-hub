@@ -97,15 +97,60 @@
   });
 
   // Сортировка таблицы «Сайты группы».
-  type HostKey = 'done' | 'host' | 'console' | 'links';
-  const hostSort = new TableSort<HostKey>(null, 1, ['links']);
+  // Статистика сайтов группы за период (по умолчанию — 28 дней), из всех консолей.
+  const STAT_PERIODS: [string, string][] = [['today', 'Сегодня'], ['yesterday', 'Вчера'], ['7', '7 дней'], ['28', '28 дней'], ['90', '3 мес'], ['180', '6 мес'], ['480', '16 мес']];
+  const PERIOD_KEY = 'gsc-hub:group-period';
+  let statPeriod = $state('28');
+  try {
+    const v = localStorage.getItem(PERIOD_KEY);
+    if (v && STAT_PERIODS.some(([k]) => k === v)) statPeriod = v;
+  } catch {
+    /* без памяти — 28 дней */
+  }
+  type HostStat = { clicks: number; impressions: number; ctr: number; position: number | null };
+  let stats = $state<Record<string, HostStat>>({});
+  let statsLoading = $state(false);
+  let statsRange = $state('');
+  let statsReq = 0;
+  async function loadStats(groupId: number, p: string) {
+    const my = ++statsReq;
+    statsLoading = true;
+    try {
+      const r = await fetch(`/groups/stats?g=${groupId}&p=${p}`);
+      if (!r.ok) throw new Error();
+      const j = await r.json();
+      if (my !== statsReq) return;
+      stats = j.byHost ?? {};
+      const fd = (iso: string) => iso.split('-').reverse().join('.');
+      statsRange = j.period.startDate === j.period.endDate ? fd(j.period.startDate) : `${fd(j.period.startDate)} – ${fd(j.period.endDate)}`;
+    } catch {
+      if (my === statsReq) stats = {};
+    } finally {
+      if (my === statsReq) statsLoading = false;
+    }
+  }
+  $effect(() => {
+    if (group && group.hosts.length) loadStats(group.id, statPeriod);
+  });
+  function setStatPeriod(p: string) {
+    statPeriod = p;
+    try {
+      localStorage.setItem(PERIOD_KEY, p);
+    } catch {
+      /* ничего */
+    }
+  }
+
+  type HostKey = 'done' | 'host' | 'console' | 'impressions' | 'clicks' | 'ctr' | 'position' | 'links';
+  const hostSort = new TableSort<HostKey>(null, 1, ['links', 'impressions', 'clicks', 'ctr']);
   const sortedHosts = $derived(
     group
       ? hostSort.apply(group.hosts, (h, k) =>
           k === 'done' ? (group.done.includes(h) ? 1 : 0)
           : k === 'host' ? h
           : k === 'console' ? (knownByHost.get(h)?.accounts.join(', ') ?? '')
-          : (itemsByHost.get(h) ?? 0)
+          : k === 'links' ? (itemsByHost.get(h) ?? 0)
+          : (stats[h]?.[k] ?? null)
         )
       : []
   );
@@ -317,9 +362,17 @@
 
         {#if group.hosts.length}
           <div class="border-b border-line">
-            <div class="px-3 pt-3 text-xs font-semibold uppercase tracking-wide text-ink-3">Сайты группы</div>
+            <div class="flex flex-wrap items-center gap-3 px-3 pt-3">
+              <span class="text-xs font-semibold uppercase tracking-wide text-ink-3">Сайты группы</span>
+              <div class="app-segmented" role="group" aria-label="Период статистики">
+                {#each STAT_PERIODS as [v, label] (v)}
+                  <button type="button" class:is-active={statPeriod === v} onclick={() => setStatPeriod(v)}>{label}</button>
+                {/each}
+              </div>
+              <span class="text-xs text-ink-3">{statsLoading ? 'Загружаю…' : statsRange}</span>
+            </div>
             <table class="app-table">
-              <thead><tr><SortTh sort={hostSort} k="done" label="Пройден" /><SortTh sort={hostSort} k="host" label="Сайт" /><SortTh sort={hostSort} k="console" label="Консоль" /><SortTh sort={hostSort} k="links" label="Ссылок" num /><th>Безанкорные</th><th></th></tr></thead>
+              <thead><tr><SortTh sort={hostSort} k="done" label="Пройден" /><SortTh sort={hostSort} k="host" label="Сайт" /><SortTh sort={hostSort} k="console" label="Консоль" /><SortTh sort={hostSort} k="impressions" label="Impr" num /><SortTh sort={hostSort} k="clicks" label="Clicks" num /><SortTh sort={hostSort} k="ctr" label="CTR" num /><SortTh sort={hostSort} k="position" label="Pos" num /><SortTh sort={hostSort} k="links" label="Ссылок" num /><th>Безанкорные</th><th></th></tr></thead>
               <tbody>
                 {#each sortedHosts as h (h)}
                   {@const isDone = group.done.includes(h)}
@@ -339,7 +392,15 @@
                       </button>
                     </td>
                     <td class="pii text-xs text-ink-3">{knownByHost.get(h)?.accounts.join(', ') || 'нет ни в одной консоли'}</td>
-                    <td class="num app-num">{itemsByHost.get(h) ?? 0}</td>
+                    {#if stats[h]}
+                      <td class="num app-num">{stats[h].impressions.toLocaleString('ru-RU')}</td>
+                      <td class="num app-num">{stats[h].clicks.toLocaleString('ru-RU')}</td>
+                      <td class="num app-num">{(stats[h].ctr * 100).toFixed(1)}%</td>
+                      <td class="num app-num">{stats[h].position === null ? '—' : stats[h].position.toFixed(1)}</td>
+                    {:else}
+                      <td colspan="4" class="num text-xs text-ink-4">{statsLoading ? '…' : '—'}</td>
+                    {/if}
+                    <td class="num app-num font-semibold">{itemsByHost.get(h) ?? 0}</td>
                     <td>
                       {#if !group.fixedAt}
                         <form method="POST" action="?/naked" use:enhance={() => async ({ update }) => update({ reset: false })} class="flex items-center gap-1">
@@ -378,7 +439,7 @@
                     {@const list = itemsOfHost.get(h) ?? []}
                     <tr class="bg-sunk hover:bg-sunk">
                       <td></td>
-                      <td colspan="5" class="py-2">
+                      <td colspan="9" class="py-2">
                         <div class="mb-1 text-xs font-semibold text-ink-2">Уже на покупку в этой группе</div>
                         {#if list.length === 0}
                           <p class="text-xs text-ink-3">Пока ничего. Выберите ключи ниже — впишите количество и нажмите +, или добавьте безанкорные справа.</p>
@@ -423,13 +484,15 @@
                         {/if}
                         {#if knownByHost.get(h)}
                           {@const k = knownByHost.get(h)!}
+                          {#key statPeriod}
                           <SiteKeysPanel
                             sources={k.sources}
-                            days={k.days}
+                            days={/^\d+$/.test(statPeriod) ? Number(statPeriod) : k.days}
                             groupId={group.id}
                             fixed={!!group.fixedAt}
                             onadd={(r) => itemsPost({ action: 'add', groupId: group.id, item: { siteUrl: r.siteUrl, query: r.query, page: r.page, position: r.position, impressions: r.impressions, clicks: r.clicks, ctr: r.ctr, qty: r.qty } })}
                           />
+                          {/key}
                         {:else}
                           <p class="mt-2 text-xs text-ink-3">Этого сайта нет ни в одной подключённой консоли — статистики по ключам нет.</p>
                         {/if}
