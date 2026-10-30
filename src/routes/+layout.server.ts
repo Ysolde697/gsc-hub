@@ -3,6 +3,7 @@ import { appVersion } from '$lib/server/version';
 import { db } from '$lib/server/db';
 import { listAccounts } from '$lib/server/accounts';
 import { listSiteGroups } from '$lib/server/site-groups';
+import { errorCount } from '$lib/server/uptime';
 
 export const load: LayoutServerLoad = async ({ locals, depends }) => {
   depends('app:consoles');
@@ -24,6 +25,8 @@ export const load: LayoutServerLoad = async ({ locals, depends }) => {
           inUse: a.in_use !== 0
         }))
       : [],
+    // Сколько сайтов сейчас с ошибкой доступности — число у пункта меню.
+    uptimeErrors: isAdmin ? errorCount(db()) : 0,
     siteGroups: isAdmin
       ? listSiteGroups(db()).map((g) => ({ id: g.id, name: g.name, active: g.active, size: g.hosts.length }))
       : []

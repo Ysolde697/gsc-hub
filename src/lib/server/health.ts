@@ -30,7 +30,7 @@ export interface HealthData {
 }
 
 // ─── SSL ──────────────────────────────────────────────────────────────────────
-function checkSsl(host: string): Promise<SslResult> {
+export function checkSsl(host: string): Promise<SslResult> {
   return new Promise((resolve) => {
     let settled = false;
     const done = (r: SslResult) => {

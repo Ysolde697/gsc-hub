@@ -15,7 +15,8 @@ export type ConfigKey =
   | 'NEURALINDEXER_API_TOKEN'
   | 'DATAFORSEO_LOGIN'
   | 'DATAFORSEO_PASSWORD'
-  | 'COUNTER_KEY';
+  | 'COUNTER_KEY'
+  | 'UPTIME_INTERVAL_H';
 
 function envVal(key: ConfigKey): string | undefined {
   const v = process.env[key];

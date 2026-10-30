@@ -286,6 +286,35 @@ CREATE TABLE IF NOT EXISTS user_selection (
   PRIMARY KEY (user_id, kind)
 );
 
+-- Доступность сайтов: последний результат по каждой проверяемой странице,
+-- эталон «нормальной» страницы и история смен состояния.
+CREATE TABLE IF NOT EXISTS uptime_checks (
+  url        TEXT PRIMARY KEY,
+  host       TEXT NOT NULL,
+  kind       TEXT NOT NULL,
+  level      TEXT NOT NULL,
+  data       TEXT NOT NULL,
+  since      INTEGER NOT NULL,
+  checked_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_uptime_checks_host ON uptime_checks (host);
+CREATE TABLE IF NOT EXISTS uptime_baseline (
+  url      TEXT PRIMARY KEY,
+  title    TEXT NOT NULL,
+  text_len INTEGER NOT NULL,
+  shingles TEXT NOT NULL,
+  saved_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS uptime_history (
+  id      INTEGER PRIMARY KEY AUTOINCREMENT,
+  url     TEXT NOT NULL,
+  host    TEXT NOT NULL,
+  level   TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  at      INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_uptime_history_host ON uptime_history (host, at);
+
 -- Сколько секунд страницы были открыты на экране (сумма за день).
 -- Среднее время = seconds / просмотры (kind = 'view' в button_clicks).
 CREATE TABLE IF NOT EXISTS page_time (

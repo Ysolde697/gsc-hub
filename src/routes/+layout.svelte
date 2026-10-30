@@ -13,6 +13,7 @@
     { href: '/properties/striking', label: 'Portfolio', title: 'Портфельная аналитика: striking distance, каннибализация, CTR, branded, decay' },
     { href: '/keywords', label: 'Ключи сайтов', title: 'Все сайты выбранной консоли и все их ключи за период: сегодня, вчера, 7–480 дней' },
     { href: '/clicks', label: 'Кнопки', title: 'Сколько раз на ваших сайтах нажали кнопки и отправили форму заказа' },
+    { href: '/uptime', label: 'Доступность', title: 'Открываются ли сайты и та ли на них страница' },
     { href: '/search', label: 'Поиск ключа', title: 'На каких ваших сайтах и страницах есть ключ и на каком месте' },
     { href: '/groups', label: 'Группы', title: 'Группы сайтов и закупки ссылок' },
     { href: '/events', label: 'Events', title: 'Склейки доменов и покупки ссылок с датами' },
@@ -165,7 +166,7 @@
       <nav class="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto pr-4 [scrollbar-width:none] max-lg:[mask-image:linear-gradient(to_right,black_calc(100%-24px),transparent)]">
         {#each NAV as item (item.href)}
           <a href={item.href} title={item.title} class="nav-link" class:is-active={isActive(item.href)}
-            aria-current={isActive(item.href) ? 'page' : undefined}>{item.label}</a>
+            aria-current={isActive(item.href) ? 'page' : undefined}>{item.label}{#if item.href === '/uptime' && data?.uptimeErrors}<span class="ml-1 rounded bg-bad px-1 text-[10px] font-semibold text-white" title="Сайтов с ошибкой">{data.uptimeErrors}</span>{/if}</a>
         {/each}
       </nav>
     {/if}
