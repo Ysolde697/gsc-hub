@@ -172,7 +172,7 @@
       </nav>
     {/if}
     <div class="ml-auto flex shrink-0 items-center gap-1.5">
-      {#if isAdmin}<HeaderPeriod period={data?.period ?? null} /><ConsolePicker consoles={data?.consoles ?? []} overridden={(data?.siteGroups ?? []).some((g) => g.active)} /><GroupPicker groups={data?.siteGroups ?? []} />{/if}
+      {#if isAdmin}<HeaderPeriod period={data?.period ?? null} /><ConsolePicker consoles={data?.consoles ?? []} /><GroupPicker groups={data?.siteGroups ?? []} />{/if}
       <button
         type="button"
         class="btn btn-sm {blur ? 'bg-ink text-white hover:bg-ink-2' : 'btn-ghost'}"
