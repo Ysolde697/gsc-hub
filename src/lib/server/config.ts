@@ -14,7 +14,8 @@ export type ConfigKey =
   | 'BACKLINK_AUTO_ENABLED'
   | 'NEURALINDEXER_API_TOKEN'
   | 'DATAFORSEO_LOGIN'
-  | 'DATAFORSEO_PASSWORD';
+  | 'DATAFORSEO_PASSWORD'
+  | 'COUNTER_KEY';
 
 function envVal(key: ConfigKey): string | undefined {
   const v = process.env[key];
@@ -68,4 +69,13 @@ export function ensureAuthSecret(db: Db): string {
   const secret = randomBytes(32).toString('base64');
   setConfigValue(db, 'AUTH_SECRET', secret);
   return secret;
+}
+
+/** Секретный ключ счётчика: Cloudflare Worker сайтов отправляет его вместе с событиями. */
+export function ensureCounterKey(db: Db, rotate = false): string {
+  const existing = getConfigValue(db, 'COUNTER_KEY');
+  if (existing && !rotate) return existing;
+  const key = randomBytes(24).toString('base64url');
+  setConfigValue(db, 'COUNTER_KEY', key);
+  return key;
 }

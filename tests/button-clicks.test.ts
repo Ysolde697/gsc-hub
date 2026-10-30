@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openDb, type Db } from '../src/lib/server/db';
-import { parseClick, recordClick, clicksForRange, allowClick, counterScript, lastSeen, parseTime, recordTime, timeForRange } from '../src/lib/server/button-clicks';
+import { parseClick, recordClick, clicksForRange, allowClick, lastSeen, parseTime, recordTime, timeForRange, pageSnippet, workerScript, parseWorkerEvent, isBotUA } from '../src/lib/server/button-clicks';
 import { isPublicPath } from '../src/lib/server/guard';
 
 const q = (o: Record<string, string>) => new URLSearchParams(o);
@@ -71,10 +71,26 @@ describe('allowClick', () => {
   });
 });
 
-it('скрипт — корректный JavaScript, шлёт на этот сервер', () => {
-  const js = counterScript('https://panel.example');
-  expect(() => new Function(js)).not.toThrow();
-  expect(js).toContain('"https://panel.example/c"');
+it('код страницы и Worker — корректный JavaScript; адреса панели в странице нет', () => {
+  const snip = pageSnippet();
+  expect(() => new Function(snip)).not.toThrow();
+  expect(snip).not.toContain('sslip');
+  const w = workerScript('https://panel.example', 'KEY123');
+  expect(() => new Function(w.replace('export default', 'return'))).not.toThrow();
+  expect(w).toContain('"https://panel.example/c"');
+  expect(w).toContain('"KEY123"');
+});
+
+it('parseWorkerEvent и боты', () => {
+  expect(parseWorkerEvent({ h: 'www.fccoins.fr', e: JSON.stringify({ k: 'submit', p: '/order/', l: 'Commander', t: '/order/' }) })).toEqual({
+    click: { host: 'fccoins.fr', page: '/order/', kind: 'submit', label: 'Commander', target: '/order/' }
+  });
+  expect(parseWorkerEvent({ h: 'fccoins.fr', e: JSON.stringify({ k: 'time', p: '/', d: 12 }) })).toEqual({ time: { host: 'fccoins.fr', page: '/', seconds: 12 } });
+  expect(parseWorkerEvent({ h: 'fccoins.fr', e: '{bad' })).toBeNull();
+  expect(isBotUA('Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)')).toBe(true);
+  expect(isBotUA('Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 HeadlessChrome/130')).toBe(true);
+  expect(isBotUA('')).toBe(true);
+  expect(isBotUA('Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1')).toBe(false);
 });
 
 it('счётчик открыт без входа, остальное — нет', () => {

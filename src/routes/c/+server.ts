@@ -1,11 +1,14 @@
 import type { RequestHandler } from './$types';
+import { timingSafeEqual } from 'node:crypto';
 import { db } from '$lib/server/db';
 import { listAllKnownSites } from '$lib/server/google';
 import { siteHostname } from '$lib/utils/url-filters';
-import { allowClick, clicksToday, normHost, parseClick, parseTime, recordClick, recordTime } from '$lib/server/button-clicks';
+import { getConfigValue } from '$lib/server/config';
+import { allowClick, clicksToday, isBotUA, normHost, parseWorkerEvent, recordClick, recordTime } from '$lib/server/button-clicks';
 
-// Открытый адрес счётчика (без входа): сайт сообщает «нажали кнопку».
-// Считаем только ваши сайты из подключённых консолей, с ограничением частоты.
+// Приём событий счётчика от Cloudflare Worker ваших сайтов (без входа, но с
+// секретным ключом). Считаем только ваши сайты из подключённых консолей,
+// только браузеры (боты отсеиваются), с ограничением частоты.
 // Ответ всегда пустой 204 — ничего не раскрываем.
 const MAX_PER_SITE_DAY = 50_000;
 let known: { hosts: Set<string>; at: number } | null = null;
@@ -26,28 +29,35 @@ async function knownHosts(): Promise<Set<string>> {
   return hosts;
 }
 
-const EMPTY = () =>
-  new Response(null, { status: 204, headers: { 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' } });
+const EMPTY = () => new Response(null, { status: 204, headers: { 'Cache-Control': 'no-store' } });
 
-export const GET: RequestHandler = async ({ url, request, getClientAddress }) => {
-  if (url.searchParams.get('k') === 'time') {
-    const t = parseTime(url.searchParams, request.headers.get('referer'));
-    const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || getClientAddress();
-    try {
-      if (t && (await knownHosts()).has(t.host) && allowClick(ip, { host: t.host, page: t.page, kind: 'view', label: 'time:' + Date.now(), target: '' })) recordTime(db(), t);
-    } catch {
-      /* счётчик не должен ломать сайт */
-    }
-    return EMPTY();
-  }
-  const e = parseClick(url.searchParams, request.headers.get('referer'));
-  if (!e) return EMPTY();
-  const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || getClientAddress();
+function keyOk(given: string | null): boolean {
+  const key = getConfigValue(db(), 'COUNTER_KEY');
+  if (!key || !given) return false;
+  const a = Buffer.from(given), b = Buffer.from(key);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+/** Старый браузерный счётчик (/c.js) отключён — такие запросы не считаем. */
+export const GET: RequestHandler = () => EMPTY();
+
+export const POST: RequestHandler = async ({ request }) => {
+  if (!keyOk(request.headers.get('x-counter-key'))) return EMPTY();
+  const ua = request.headers.get('x-client-ua') ?? '';
+  if (isBotUA(ua)) return EMPTY();
+  const ip = request.headers.get('x-client-ip') || 'worker';
   try {
-    if (!(await knownHosts()).has(e.host)) return EMPTY();
-    if (!allowClick(ip, e)) return EMPTY();
-    if (clicksToday(db(), e.host) >= MAX_PER_SITE_DAY) return EMPTY();
-    recordClick(db(), e);
+    const parsed = parseWorkerEvent(await request.json());
+    if (!parsed) return EMPTY();
+    const host = 'click' in parsed ? parsed.click.host : parsed.time.host;
+    if (!(await knownHosts()).has(host)) return EMPTY();
+    if ('time' in parsed) {
+      if (allowClick(ip, { host, page: parsed.time.page, kind: 'view', label: 'time:' + Date.now(), target: '' })) recordTime(db(), parsed.time);
+      return EMPTY();
+    }
+    if (!allowClick(ip, parsed.click)) return EMPTY();
+    if (clicksToday(db(), host) >= MAX_PER_SITE_DAY) return EMPTY();
+    recordClick(db(), parsed.click);
   } catch {
     /* счётчик не должен ломать сайт */
   }

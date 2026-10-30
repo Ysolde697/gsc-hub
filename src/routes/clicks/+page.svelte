@@ -2,17 +2,18 @@
   // «Кнопки»: сколько раз на ваших сайтах нажали кнопки и отправили форму
   // заказа, рядом с кликами из Google — видно, как шаблон доводит до заказа.
   import { goto } from '$app/navigation';
+  import { enhance } from '$app/forms';
   import SortTh from '$lib/components/SortTh.svelte';
   import { TableSort } from '$lib/table-sort.svelte';
 
   let { data } = $props();
   const PERIODS: [string, string][] = [['today', 'Сегодня'], ['yesterday', 'Вчера'], ['7', '7 дней'], ['28', '28 дней'], ['90', '3 мес'], ['180', '6 мес'], ['480', '16 мес']];
-  const KIND: Record<string, string> = { view: 'Просмотр', submit: 'Отправка формы', button: 'Кнопка', out: 'Ссылка на другой сайт', link: 'Обычная ссылка' };
-  const snippet = $derived(`<script async src="${data.origin}/c.js"><\/script>`);
+  const KIND: Record<string, string> = { view: 'Просмотр', submit: 'Дошёл до оплаты', button: 'Кнопка', out: 'Ссылка на другой сайт', link: 'Обычная ссылка' };
   let copied = $state(false);
+  let showCode = $state(false);
   async function copy() {
     try {
-      await navigator.clipboard.writeText(snippet);
+      await navigator.clipboard.writeText(data.workerCode);
       copied = true;
       setTimeout(() => (copied = false), 2000);
     } catch {
@@ -43,8 +44,8 @@
     for (const t of data.time) get(t.host).seconds += t.seconds;
     for (const s of m.values()) {
       s.avg = s.views ? s.seconds / s.views : null;
-      s.rateSubmit = s.gsc ? s.submits / s.gsc : null;
-      s.rateButton = s.gsc ? s.buttons / s.gsc : null;
+      s.rateSubmit = s.views ? s.submits / s.views : null;
+      s.rateButton = s.views ? s.buttons / s.views : null;
     }
     return [...m.values()];
   });
@@ -92,18 +93,29 @@
 <div class="desk">
   <section class="pane">
     <details class="border-b border-line" open={Object.keys(data.lastSeen).length === 0}>
-      <summary class="cursor-pointer px-3 py-2 text-sm font-semibold">Как подключить счётчик к сайту</summary>
+      <summary class="cursor-pointer px-3 py-2 text-sm font-semibold">Как подключить счётчик к сайту (Cloudflare)</summary>
       <div class="space-y-2 px-3 pb-3 text-sm text-ink-2">
-        <p>Вставьте эту строку в шаблон сайта перед <code>&lt;/head&gt;</code> (или перед <code>&lt;/body&gt;</code>) — один раз на каждый сайт:</p>
+        <p>Считает Cloudflare Worker: он сам вставляет в страницы маленький код подсчёта и отправляет данные на адрес <b>самого сайта</b> — в шаблоне ничего не меняется, адреса панели на сайте нет, сайты между собой не связаны. Нужен один раз:</p>
+        <ol class="ml-5 list-decimal space-y-1">
+          <li>Cloudflare → <b>Workers &amp; Pages</b> → <b>Create</b> → <b>Create Worker</b> (Hello World) → назовите, например, <code>site-stats</code> → <b>Deploy</b>.</li>
+          <li><b>Edit code</b> → удалите всё, вставьте код ниже (кнопка «Копировать код») → <b>Deploy</b>.</li>
+          <li>Worker → <b>Settings</b> → <b>Domains &amp; Routes</b> → <b>Add</b> → <b>Route</b>: зона — ваш сайт, маршрут <code>fccoins.fr/*</code> (и <code>www.fccoins.fr/*</code>, если сайт открывается с www) → <b>Add route</b>.</li>
+          <li>Новые сайты — только шаг 3: добавить маршрут для домена в тот же Worker. Сайт должен быть в подключённой консоли Search Console, иначе панель его не примет.</li>
+          <li>Проверка: откройте сайт в обычном браузере, нажмите кнопку заказа — через минуту обновите эту страницу.</li>
+        </ol>
+        <p class="text-xs text-ink-3">Если раньше вы ставили другой подсчёт через Cloudflare (свой Worker, Zaraz, правило) — уберите его, чтобы не считалось дважды. На бесплатном тарифе Cloudflare — 100 000 запросов к Worker в день на аккаунт.</p>
         <div class="flex flex-wrap items-center gap-2">
-          <code class="pii rounded border border-line bg-sunk px-2 py-1 text-xs">{snippet}</code>
-          <button type="button" class="btn btn-sec btn-sm" onclick={copy}>{copied ? 'Скопировано ✓' : 'Копировать'}</button>
+          <button type="button" class="btn btn-pri btn-sm" onclick={copy}>{copied ? 'Скопировано ✓' : 'Копировать код Worker'}</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick={() => (showCode = !showCode)}>{showCode ? 'Скрыть код' : 'Показать код'}</button>
+          <form method="POST" action="?/rotateKey" use:enhance={({ cancel }) => { if (!confirm('Сменить ключ? Старый код перестанет считать — его надо будет заменить в Worker.')) cancel(); }}>
+            <button class="btn btn-ghost btn-sm text-bad">Сменить ключ</button>
+          </form>
         </div>
+        {#if showCode}<pre class="max-h-80 overflow-auto rounded border border-line bg-sunk p-2 text-[11px]">{data.workerCode}</pre>{/if}
         <ul class="ml-5 list-disc text-xs text-ink-3">
-          <li>Считает сам, размечать кнопки не нужно: отправку формы заказа, кнопки, ссылки на другие сайты (и, по галочке, обычные ссылки).</li>
-          <li>Чтобы кнопка считалась под своим именем, добавьте ей <code>data-track="Название"</code>.</li>
-          <li>Принимаются только ваши сайты из подключённых консолей. Без cookie и личных данных: хранится только «на сайте X нажали Y».</li>
-          <li>Проверка: откройте свой сайт, нажмите кнопку — через минуту обновите эту страницу, сайт появится в списке.</li>
+          <li>Просмотры и время считаются только у настоящих браузеров; боты и проверялки отсеиваются. Время — только пока страница видна на экране.</li>
+          <li>«Дошли до оплаты» — только когда после формы реально открылась страница оплаты. Нажатие, после которого сайт не пустил дальше (например, сумма меньше минимума), не считается.</li>
+          <li>Чтобы кнопка считалась под своим именем, можно добавить ей <code>data-track="Название"</code>. Без cookie и личных данных.</li>
         </ul>
         {#if Object.keys(data.lastSeen).length}
           <p class="text-xs">Данные приходят с: {#each Object.entries(data.lastSeen) as [h, d], i (h)}{i ? ', ' : ''}<span class="pii">{h}</span> <span class="text-ink-4">(последнее {fmtDay(d)})</span>{/each}</p>
@@ -119,7 +131,7 @@
         {/each}
       </div>
       <span class="text-xs text-ink-3">{periodLabel}</span>
-      <span class="text-xs text-ink-3">· просмотров {fmt(totals.v)} · нажатий кнопок {fmt(totals.b)} · отправок формы {fmt(totals.s)}</span>
+      <span class="text-xs text-ink-3">· просмотров {fmt(totals.v)} · нажатий кнопок {fmt(totals.b)} · дошли до оплаты {fmt(totals.s)}</span>
       <label class="ml-auto flex items-center gap-1 text-xs text-ink-2"><input type="checkbox" bind:checked={withLinks} /> показывать и обычные ссылки</label>
     </div>
 
@@ -136,9 +148,9 @@
               <SortTh {sort} k="views" label="Просмотры страниц" num title="Сколько раз открыли страницы сайта (счётчик; считается с момента обновления скрипта)" />
               <SortTh {sort} k="avg" label="Среднее время" num title="Сколько в среднем страница была открыта на экране (свёрнутая вкладка не считается)" />
               <SortTh {sort} k="buttons" label="Нажали кнопку" num title="Кнопки и ссылки на другие сайты" />
-              <SortTh {sort} k="rateButton" label="% от кликов" num title="Нажали кнопку / клики из Google" />
-              <SortTh {sort} k="submits" label="Отправили форму" num title="Отправка формы заказа (Continue to checkout и т.п.)" />
-              <SortTh {sort} k="rateSubmit" label="% от кликов" num title="Отправили форму / клики из Google" />
+              <SortTh {sort} k="rateButton" label="% от просмотров" num title="Нажали кнопку / просмотры страниц" />
+              <SortTh {sort} k="submits" label="Дошли до оплаты" num title="После формы заказа реально открылась страница оплаты" />
+              <SortTh {sort} k="rateSubmit" label="% от просмотров" num title="Дошли до оплаты / просмотры страниц" />
             </tr>
           </thead>
           <tbody>
@@ -148,7 +160,7 @@
                   <span class="flex items-center gap-1">
                     <svg viewBox="0 0 16 16" class="h-3 w-3 shrink-0 text-ink-4 transition-transform {open.has(s.host) ? 'rotate-90' : ''}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5"/></svg>
                     {s.host}
-                    {#if !data.lastSeen[s.host]}<span class="badge badge-muted ml-1 font-normal" title="С этого сайта ещё не пришло ни одного события — строка счётчика не вставлена">счётчик не стоит</span>{/if}
+                    {#if !data.lastSeen[s.host]}<span class="badge badge-muted ml-1 font-normal" title="С этого сайта ещё не пришло ни одного события — маршрут Worker в Cloudflare не добавлен">счётчик не стоит</span>{/if}
                   </span>
                 </td>
                 <td class="num app-num">{fmt(s.impr)}</td>
@@ -174,7 +186,7 @@
                             <SortTh sort={psort} k="views" label="Просмотры" num />
                             <SortTh sort={psort} k="avg" label="Среднее время" num />
                             <SortTh sort={psort} k="buttons" label="Нажали кнопку" num />
-                            <SortTh sort={psort} k="submits" label="Отправили форму" num />
+                            <SortTh sort={psort} k="submits" label="Дошли до оплаты" num />
                           </tr>
                         </thead>
                         <tbody>

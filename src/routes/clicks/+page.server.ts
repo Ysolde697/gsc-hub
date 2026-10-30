@@ -1,8 +1,9 @@
-import type { PageServerLoad } from './$types';
+import type { PageServerLoad, Actions } from './$types';
+import { ensureCounterKey } from '$lib/server/config';
 import { db } from '$lib/server/db';
 import { requireAdmin } from '$lib/server/guard';
 import { parsePeriod, sitesForPeriod } from '$lib/server/site-keys';
-import { clicksForRange, lastSeen, normHost, timeForRange } from '$lib/server/button-clicks';
+import { clicksForRange, lastSeen, normHost, timeForRange, workerScript } from '$lib/server/button-clicks';
 import { siteHostname } from '$lib/utils/url-filters';
 import { activeGroupHosts } from '$lib/server/site-groups';
 
@@ -36,5 +37,14 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     clicks: clicks.filter((r) => mine(r.host)),
     time: timeForRange(db(), period.startDate, period.endDate).filter((t) => mine(t.host)),
     gsc,
-    gscImpr, lastSeen: seen, errors, origin: url.origin };
+    gscImpr, lastSeen: seen, errors, workerCode: workerScript(url.origin, ensureCounterKey(db())) };
+};
+
+export const actions: Actions = {
+  // Новый ключ: старый Worker перестанет приниматься — код надо обновить на всех сайтах.
+  rotateKey: ({ locals }) => {
+    requireAdmin(locals);
+    ensureCounterKey(db(), true);
+    return { rotated: true };
+  }
 };

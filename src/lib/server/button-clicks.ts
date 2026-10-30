@@ -115,59 +115,114 @@ export function allowClick(ip: string, e: ClickEvent, now: number = Date.now()):
   return !(last && now - last < DEDUPE_MS);
 }
 
-/** Скрипт для сайтов: одна строка <script async src=".../c.js"></script>. */
-export function counterScript(origin: string): string {
-  return `/* GSC Hub: счётчик нажатий кнопок. Без cookie и личных данных. */
-(function () {
-  if (window.__gscHubClicks) return;
-  window.__gscHubClicks = 1;
-  var E = ${JSON.stringify(origin + '/c')};
-  function send(k, l, t) {
-    var u = E + '?k=' + k + '&h=' + encodeURIComponent(location.hostname) + '&p=' + encodeURIComponent(location.pathname) + '&l=' + encodeURIComponent((l || '').trim().slice(0, 80)) + '&t=' + encodeURIComponent((t || '').slice(0, 300));
-    try { fetch(u, { mode: 'no-cors', keepalive: true, credentials: 'omit' }); } catch (e) { new Image().src = u; }
+/** Старый общий скрипт /c.js отключён: он связывал сайты одним внешним адресом. */
+export function counterScript(_origin: string): string {
+  return '/* GSC Hub: этот счётчик отключён — подсчёт идёт через Cloudflare Worker сайта. */\n';
+}
+
+/** Боты и проверялки: их просмотры не считаем. */
+export function isBotUA(ua: string): boolean {
+  if (!ua || !/mozilla\//i.test(ua)) return true;
+  return /bot|crawl|spider|slurp|headless|lighthouse|pagespeed|preview|inspectiontool|facebookexternalhit|embedly|quora|pinterest|ahrefs|semrush|mj12|yandex|baidu|bytespider|petal|gptbot|claude|perplexity|python|curl|wget|httpclient|go-http|java\//i.test(ua);
+}
+
+/**
+ * Событие от Cloudflare Worker сайта: { h: хост, e: JSON события из страницы }.
+ * Событие: { k, p, l?, t?, d? }.
+ */
+export function parseWorkerEvent(
+  body: unknown
+): { click: ClickEvent } | { time: { host: string; page: string; seconds: number } } | null {
+  if (!body || typeof body !== 'object') return null;
+  const b = body as { h?: unknown; e?: unknown };
+  let ev: Record<string, unknown>;
+  try {
+    ev = typeof b.e === 'string' ? JSON.parse(b.e) : (b.e as Record<string, unknown>);
+  } catch {
+    return null;
   }
-  // Просмотр страницы — один раз при открытии.
-  send('view', '', '');
-  // Время на экране: считаем, пока вкладка видна; отправляем, когда её
-  // скрывают или закрывают (каждый раз — только новые секунды).
-  var shownAt = document.visibilityState === 'visible' ? Date.now() : 0, acc = 0;
-  function flush() {
-    if (shownAt) { acc += Date.now() - shownAt; shownAt = 0; }
-    var d = Math.round(acc / 1000);
-    if (d < 1) return;
-    acc = 0;
-    var u = E + '?k=time&h=' + encodeURIComponent(location.hostname) + '&p=' + encodeURIComponent(location.pathname) + '&d=' + d;
-    try { fetch(u, { mode: 'no-cors', keepalive: true, credentials: 'omit' }); } catch (e) { new Image().src = u; }
+  if (!ev || typeof ev !== 'object') return null;
+  const params = new URLSearchParams();
+  params.set('h', String(b.h ?? ''));
+  for (const k of ['k', 'p', 'l', 't', 'd']) if (ev[k] !== undefined && ev[k] !== null) params.set(k, String(ev[k]));
+  if (params.get('k') === 'time') {
+    const t = parseTime(params, null);
+    return t ? { time: t } : null;
   }
-  document.addEventListener('visibilitychange', function () {
-    if (document.visibilityState === 'hidden') flush(); else shownAt = Date.now();
-  });
-  window.addEventListener('pagehide', flush);
-  function label(el) { return el.getAttribute('data-track') || el.getAttribute('aria-label') || el.innerText || el.value || el.title || ''; }
-  function where(href) {
-    try { var u = new URL(href, location.href); return u.host === location.host ? u.pathname + u.search + u.hash : u.host + u.pathname; } catch (e) { return href || ''; }
-  }
-  var BTN = /(^|[\\s_-])(btn|button|boton|bouton|knop|pulsante|kick|cta)/i;
-  document.addEventListener('click', function (ev) {
-    var el = ev.target && ev.target.closest && ev.target.closest('a,button,[data-track],input[type=submit]');
-    if (!el) return;
-    var isSubmit = (el.tagName === 'BUTTON' && (el.type || 'submit') === 'submit' && el.form) || (el.tagName === 'INPUT' && el.form);
-    if (isSubmit) return; // считаем отправку формы ниже
-    var href = el.getAttribute('href') || '';
-    var cls = (el.getAttribute('class') || '') + ' ' + (el.getAttribute('rel') || '');
-    var kind = 'link';
-    if (el.tagName === 'A' && href && !/^(#|javascript:|mailto:|tel:)/i.test(href)) {
-      try { if (new URL(href, location.href).host !== location.host) kind = 'out'; } catch (e) {}
+  const c = parseClick(params, null);
+  return c ? { click: c } : null;
+}
+
+/** Путь на самом сайте, куда страница шлёт события (его перехватывает Worker). */
+export const SITE_PATH = '/_e';
+
+/**
+ * Код, который Worker вставляет в <head> каждой HTML-страницы. Шлёт события
+ * на адрес самого сайта — адреса панели в странице нет.
+ * «Дошли до оплаты» считается, только когда после отправки формы реально
+ * открылась страница из её action (а не когда сайт отказал, например, сумма мала).
+ */
+export function pageSnippet(path: string = SITE_PATH): string {
+  return `(function(){if(window.__ghc)return;window.__ghc=1;var P=${JSON.stringify(path)};
+function send(o){o.p=location.pathname;var b=JSON.stringify(o);try{if(navigator.sendBeacon&&navigator.sendBeacon(P,new Blob([b],{type:'application/json'})))return}catch(e){}try{fetch(P,{method:'POST',body:b,keepalive:true,headers:{'Content-Type':'application/json'}})}catch(e){}}
+send({k:'view'});
+try{var nav=(performance.getEntriesByType&&performance.getEntriesByType('navigation')[0])||{};var s=JSON.parse(sessionStorage.getItem('__ghs')||'null');sessionStorage.removeItem('__ghs');if(s&&nav.type!=='reload'&&Date.now()-s.at<600000&&location.pathname===s.a)send({k:'submit',l:s.l,t:s.a})}catch(e){}
+var shown=document.visibilityState==='visible'?Date.now():0,acc=0;
+function flush(){if(shown){acc+=Date.now()-shown;shown=0}var d=Math.round(acc/1000);if(d<1)return;acc=0;send({k:'time',d:d})}
+document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden')flush();else shown=Date.now()});
+addEventListener('pagehide',flush);
+function label(el){return((el&&(el.getAttribute('data-track')||el.getAttribute('aria-label')||el.innerText||el.value||el.title))||'').trim().slice(0,80)}
+function where(h){try{var u=new URL(h,location.href);return u.host===location.host?u.pathname+u.search+u.hash:u.host+u.pathname}catch(e){return h||''}}
+var BTN=/(^|[\\s_-])(btn|button|boton|bouton|knop|pulsante|kick|cta)/i;
+document.addEventListener('click',function(ev){var el=ev.target&&ev.target.closest&&ev.target.closest('a,button,[data-track],input[type=submit]');if(!el)return;
+if((el.tagName==='BUTTON'&&(el.type||'submit')==='submit'&&el.form)||(el.tagName==='INPUT'&&el.form))return;
+var h=el.getAttribute('href')||'',c=(el.getAttribute('class')||'')+' '+(el.getAttribute('rel')||''),k='link';
+if(el.tagName==='A'&&h&&!/^(#|javascript:|mailto:|tel:)/i.test(h)){try{if(new URL(h,location.href).host!==location.host)k='out'}catch(e){}}
+if(k==='link'&&(el.hasAttribute('data-track')||el.tagName==='BUTTON'||BTN.test(c)||/sponsored/i.test(c)))k='button';
+send({k:k,l:label(el),t:h?where(h):''})},true);
+document.addEventListener('submit',function(ev){var f=ev.target;if(!f||f.tagName!=='FORM')return;var b=ev.submitter||f.querySelector('button[type=submit],button:not([type]),input[type=submit]');var a;try{a=new URL(f.getAttribute('action')||location.pathname,location.href)}catch(e){return}
+if(a.host!==location.host){send({k:'out',l:label(b),t:a.host+a.pathname});return}
+try{sessionStorage.setItem('__ghs',JSON.stringify({a:a.pathname,l:label(b)||'форма',at:Date.now()}))}catch(e){}},true);
+})();`;
+}
+
+/** Код Cloudflare Worker: вставляет счётчик в страницы и пересылает события в панель. */
+export function workerScript(panelOrigin: string, key: string, path: string = SITE_PATH): string {
+  return `// GSC Hub — счётчик просмотров, времени и кнопок для сайта (Cloudflare Worker).
+// Ничего не меняет на сайте, кроме маленького кода в <head> HTML-страниц.
+// События идут на адрес самого сайта (${path}), Worker пересылает их в панель.
+const PANEL = ${JSON.stringify(panelOrigin + '/c')};
+const KEY = ${JSON.stringify(key)};
+const PATH = ${JSON.stringify(path)};
+const SNIPPET = ${JSON.stringify('<script>' + pageSnippet(path) + '</script>')};
+
+export default {
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+    if (url.pathname === PATH) {
+      if (request.method === 'POST') {
+        const e = await request.text();
+        if (e.length < 4000) {
+          ctx.waitUntil(
+            fetch(PANEL, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Counter-Key': KEY,
+                'X-Client-IP': request.headers.get('CF-Connecting-IP') || '',
+                'X-Client-UA': request.headers.get('User-Agent') || ''
+              },
+              body: JSON.stringify({ h: url.hostname, e })
+            }).catch(() => {})
+          );
+        }
+      }
+      return new Response(null, { status: 204, headers: { 'Cache-Control': 'no-store' } });
     }
-    if (kind === 'link' && (el.hasAttribute('data-track') || el.tagName === 'BUTTON' || BTN.test(cls) || /sponsored/i.test(cls))) kind = 'button';
-    send(kind, label(el), href ? where(href) : '');
-  }, true);
-  document.addEventListener('submit', function (ev) {
-    var f = ev.target;
-    if (!f || f.tagName !== 'FORM') return;
-    var b = ev.submitter || f.querySelector('button[type=submit],button:not([type]),input[type=submit]');
-    send('submit', b ? label(b) : (f.getAttribute('data-track') || 'форма'), where(f.getAttribute('action') || location.pathname));
-  }, true);
-})();
+    const res = await fetch(request);
+    if (request.method !== 'GET' || !(res.headers.get('Content-Type') || '').includes('text/html')) return res;
+    return new HTMLRewriter().on('head', { element(el) { el.append(SNIPPET, { html: true }); } }).transform(res);
+  }
+};
 `;
 }

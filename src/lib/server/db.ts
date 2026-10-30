@@ -309,6 +309,15 @@ export function openDb(path: string): Db {
     .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='query_filters'")
     .get();
   db.exec(SCHEMA);
+  // Разовая очистка счётчика кнопок: до перехода на Cloudflare Worker туда
+  // попадали боты и неудачные отправки формы — эти цифры неверны.
+  db.exec('CREATE TABLE IF NOT EXISTS schema_marks (name TEXT PRIMARY KEY)');
+  if (!db.prepare("SELECT 1 FROM schema_marks WHERE name = 'counter-v2'").get()) {
+    db.transaction(() => {
+      db.exec('DELETE FROM button_clicks; DELETE FROM page_time;');
+      db.prepare("INSERT INTO schema_marks (name) VALUES ('counter-v2')").run();
+    })();
+  }
   const cols = db.prepare("PRAGMA table_info('google_accounts')").all() as Array<{ name: string }>;
   if (!cols.some((c) => c.name === 'owner_id')) {
     db.exec('ALTER TABLE google_accounts ADD COLUMN owner_id TEXT');
