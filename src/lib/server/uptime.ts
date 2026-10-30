@@ -277,7 +277,7 @@ export async function checkHost(db: Db, host: string, f: typeof fetch = fetch): 
 export const INTERVALS = [6, 12, 24] as const;
 export function intervalHours(db: Db): number {
   const v = Number(getConfigValue(db, 'UPTIME_INTERVAL_H'));
-  return (INTERVALS as readonly number[]).includes(v) ? v : 6;
+  return (INTERVALS as readonly number[]).includes(v) ? v : 24;
 }
 
 /** Все домены всех консолей (без www). */
