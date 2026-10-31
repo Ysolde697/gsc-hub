@@ -157,16 +157,17 @@ export function parseWorkerEvent(
 export const SITE_PATH = '/_e';
 
 /**
- * Код, который Worker вставляет в <head> каждой HTML-страницы. Шлёт события
+ * Код, который Worker вставляет в <head> каждой HTML-страницы.
+ * «Перешли к оплате» записывается на ту страницу, где нажали кнопку. Шлёт события
  * на адрес самого сайта — адреса панели в странице нет.
  * «Дошли до оплаты» считается, только когда после отправки формы реально
  * открылась страница из её action (а не когда сайт отказал, например, сумма мала).
  */
 export function pageSnippet(path: string = SITE_PATH): string {
   return `(function(){if(window.__ghc)return;window.__ghc=1;var P=${JSON.stringify(path)};
-function send(o){o.p=location.pathname;var b=JSON.stringify(o);try{if(navigator.sendBeacon&&navigator.sendBeacon(P,new Blob([b],{type:'application/json'})))return}catch(e){}try{fetch(P,{method:'POST',body:b,keepalive:true,headers:{'Content-Type':'application/json'}})}catch(e){}}
+function send(o){if(!o.p)o.p=location.pathname;var b=JSON.stringify(o);try{if(navigator.sendBeacon&&navigator.sendBeacon(P,new Blob([b],{type:'application/json'})))return}catch(e){}try{fetch(P,{method:'POST',body:b,keepalive:true,headers:{'Content-Type':'application/json'}})}catch(e){}}
 send({k:'view'});
-try{var nav=(performance.getEntriesByType&&performance.getEntriesByType('navigation')[0])||{};var s=JSON.parse(sessionStorage.getItem('__ghs')||'null');sessionStorage.removeItem('__ghs');if(s&&nav.type!=='reload'&&Date.now()-s.at<600000&&location.pathname===s.a)send({k:'submit',l:s.l,t:s.a})}catch(e){}
+try{var nav=(performance.getEntriesByType&&performance.getEntriesByType('navigation')[0])||{};var s=JSON.parse(sessionStorage.getItem('__ghs')||'null');sessionStorage.removeItem('__ghs');if(s&&nav.type!=='reload'&&Date.now()-s.at<600000&&location.pathname===s.a)send({k:'submit',l:s.l,t:s.a,p:s.f||s.a})}catch(e){}
 var shown=document.visibilityState==='visible'?Date.now():0,acc=0;
 function flush(){if(shown){acc+=Date.now()-shown;shown=0}var d=Math.round(acc/1000);if(d<1)return;acc=0;send({k:'time',d:d})}
 document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden')flush();else shown=Date.now()});
@@ -182,7 +183,7 @@ if(k==='link'&&(el.hasAttribute('data-track')||el.tagName==='BUTTON'||BTN.test(c
 send({k:k,l:label(el),t:h?where(h):''})},true);
 document.addEventListener('submit',function(ev){var f=ev.target;if(!f||f.tagName!=='FORM')return;var b=ev.submitter||f.querySelector('button[type=submit],button:not([type]),input[type=submit]');var a;try{a=new URL(f.getAttribute('action')||location.pathname,location.href)}catch(e){return}
 if(a.host!==location.host){send({k:'out',l:label(b),t:a.host+a.pathname});return}
-try{sessionStorage.setItem('__ghs',JSON.stringify({a:a.pathname,l:label(b)||'форма',at:Date.now()}))}catch(e){}},true);
+try{sessionStorage.setItem('__ghs',JSON.stringify({a:a.pathname,f:location.pathname,l:label(b)||'форма',at:Date.now()}))}catch(e){}},true);
 })();`;
 }
 
@@ -234,7 +235,13 @@ export default {
         const to = new URL(loc, url);
         if (to.hostname.replace(/^www\\./, '') !== url.hostname.replace(/^www\\./, '')) {
           const target = (url.pathname + url.search).slice(0, 300);
-          forward(env, ctx, request, url.hostname, JSON.stringify({ k: 'submit', p: url.pathname, l: 'Переход к оплате', t: target }));
+          // Страница, где нажали кнопку, — из Referer (если это этот же сайт).
+          let from = url.pathname;
+          try {
+            const ref = new URL(request.headers.get('Referer') || '');
+            if (ref.hostname === url.hostname) from = ref.pathname;
+          } catch (e) {}
+          forward(env, ctx, request, url.hostname, JSON.stringify({ k: 'submit', p: from, l: 'Переход к оплате', t: target }));
         }
       } catch (e) {}
       return res;

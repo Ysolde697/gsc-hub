@@ -8,7 +8,7 @@
   import { TableSort } from '$lib/table-sort.svelte';
 
   let { data, form } = $props();
-  const KIND: Record<string, string> = { view: 'Просмотр', submit: 'Дошёл до оплаты', button: 'Кнопка', out: 'Ссылка на другой сайт', link: 'Обычная ссылка' };
+  const KIND: Record<string, string> = { view: 'Просмотр', submit: 'Перешёл к оплате', button: 'Кнопка', out: 'Ссылка на другой сайт', link: 'Обычная ссылка' };
   let copied = $state<'' | 'code' | 'key'>('');
   let showCode = $state(false);
   async function copy(text: string, what: 'code' | 'key') {
@@ -143,7 +143,7 @@
         {/if}
         <ul class="ml-5 list-disc text-xs text-ink-3">
           <li>Просмотры и время считаются только у настоящих браузеров; боты и проверялки отсеиваются. Время — только пока страница видна на экране.</li>
-          <li>«Дошли до оплаты» — только когда после формы реально открылась страница оплаты. Нажатие, после которого сайт не пустил дальше (например, сумма меньше минимума), не считается.</li>
+          <li>«Перешли к оплате» — нажали кнопку заказа и реально ушли на оплату / к партнёру; записывается на ту страницу, где нажали. Нажатие, после которого сайт не пустил дальше (например, сумма меньше минимума), не считается.</li><li>«Другие кнопки» — остальные кнопки и ссылки (например, «Order coins» в шапке, ссылки на другие сайты).</li>
           <li>Чтобы кнопка считалась под своим именем, можно добавить ей <code>data-track="Название"</code>. Без cookie и личных данных.</li>
         </ul>
         {#if Object.keys(data.lastSeen).length}
@@ -156,7 +156,7 @@
       <h1 class="text-base font-semibold">Кнопки</h1>
       <PeriodNote start={data.period.startDate} end={data.period.endDate} />
       <span class="text-xs text-ink-3">{periodLabel}</span>
-      <span class="text-xs text-ink-3">· просмотров {fmt(totals.v)} · нажатий кнопок {fmt(totals.b)} · дошли до оплаты {fmt(totals.s)}</span>
+      <span class="text-xs text-ink-3">· просмотров {fmt(totals.v)} · других кнопок {fmt(totals.b)} · перешли к оплате {fmt(totals.s)}</span>
       <label class="ml-auto flex items-center gap-1 text-xs text-ink-2"><input type="checkbox" bind:checked={withLinks} /> показывать и обычные ссылки</label>
     </div>
 
@@ -172,10 +172,10 @@
               <SortTh {sort} k="gsc" label="Клики из Google" num title="Search Console за тот же период" />
               <SortTh {sort} k="views" label="Просмотры страниц" num title="Сколько раз открыли страницы сайта (счётчик; считается с момента обновления скрипта)" />
               <SortTh {sort} k="avg" label="Среднее время" num title="Сколько в среднем страница была открыта на экране (свёрнутая вкладка не считается)" />
-              <SortTh {sort} k="buttons" label="Нажали кнопку" num title="Кнопки и ссылки на другие сайты" />
-              <SortTh {sort} k="rateButton" label="% от просмотров" num title="Нажали кнопку / просмотры страниц" />
-              <SortTh {sort} k="submits" label="Дошли до оплаты" num title="После формы заказа реально открылась страница оплаты" />
-              <SortTh {sort} k="rateSubmit" label="% от просмотров" num title="Дошли до оплаты / просмотры страниц" />
+              <SortTh {sort} k="buttons" label="Другие кнопки" num title="Нажатия кнопок и ссылок, после которых заказа ещё нет: «Order coins» в шапке, ссылки на другие сайты" />
+              <SortTh {sort} k="rateButton" label="% от просмотров" num title="Другие кнопки / просмотры страниц" />
+              <SortTh {sort} k="submits" label="Перешли к оплате" num title="Нажали кнопку заказа («Continue to checkout», «Afrekenen»…) и реально ушли на оплату / к партнёру. Если сайт не пустил (например, сумма мала) — не считается" />
+              <SortTh {sort} k="rateSubmit" label="% от просмотров" num title="Перешли к оплате / просмотры страниц" />
             </tr>
           </thead>
           <tbody>
@@ -210,8 +210,8 @@
                             <SortTh sort={psort} k="page" label="Страница" />
                             <SortTh sort={psort} k="views" label="Просмотры" num />
                             <SortTh sort={psort} k="avg" label="Среднее время" num />
-                            <SortTh sort={psort} k="buttons" label="Нажали кнопку" num />
-                            <SortTh sort={psort} k="submits" label="Дошли до оплаты" num />
+                            <SortTh sort={psort} k="buttons" label="Другие кнопки" num />
+                            <SortTh sort={psort} k="submits" label="Перешли к оплате" num />
                           </tr>
                         </thead>
                         <tbody>
