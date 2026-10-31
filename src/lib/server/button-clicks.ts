@@ -123,7 +123,7 @@ export function counterScript(_origin: string): string {
 /** Боты и проверялки: их просмотры не считаем. */
 export function isBotUA(ua: string): boolean {
   if (!ua || !/mozilla\//i.test(ua)) return true;
-  return /bot|crawl|spider|slurp|headless|lighthouse|pagespeed|preview|inspectiontool|facebookexternalhit|embedly|quora|pinterest|ahrefs|semrush|mj12|yandex|baidu|bytespider|petal|gptbot|claude|perplexity|python|curl|wget|httpclient|go-http|java\//i.test(ua);
+  return /bot|crawl|spider|slurp|headless|lighthouse|pagespeed|preview|inspectiontool|facebookexternalhit|embedly|quora|pinterest|ahrefs|semrush|mj12|yandex|baidu|bytespider|petal|gptbot|claude|perplexity|python|curl|wget|httpclient|go-http|java\/|gschubcheck|uptime|monitor|pingdom|statuscake/i.test(ua);
 }
 
 /**

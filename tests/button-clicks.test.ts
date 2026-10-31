@@ -92,6 +92,7 @@ it('parseWorkerEvent и боты', () => {
   expect(isBotUA('Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)')).toBe(true);
   expect(isBotUA('Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 HeadlessChrome/130')).toBe(true);
   expect(isBotUA('')).toBe(true);
+  expect(isBotUA('Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 Chrome/130.0 Safari/537.36 GSCHubCheck/1')).toBe(true);
   expect(isBotUA('Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1')).toBe(false);
 });
 
