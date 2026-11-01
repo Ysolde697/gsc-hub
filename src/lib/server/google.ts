@@ -240,7 +240,7 @@ export interface SearchAnalyticsBody {
   rowLimit?: number;
   startRow?: number;
   dimensionFilterGroups?: DimensionFilterGroup[];
-  dataState?: 'all' | 'final';
+  dataState?: 'all' | 'final' | 'HOURLY_ALL';
 }
 
 // One definition of "last N days", shared with the export route and anything
@@ -253,6 +253,92 @@ function gscDateRange(days: number, now: number = Date.now()): { startDate: stri
 }
 
 export async function searchAnalyticsQuery(
+  db: Db,
+  acc: AccountRow,
+  siteUrl: string,
+  body: SearchAnalyticsBody
+): Promise<SearchAnalyticsRow[]> {
+  // «Сегодня»: суточных цифр за текущий день Google долго не отдаёт, а почасовые
+  // уже есть — их показывает Search Console в режиме «24 часа». Берём их; если
+  // Google почасовые не дал — как раньше, суточные.
+  if (isTodayTotals(body)) {
+    const hourly = await todayFromHourly(db, acc, siteUrl, body.startDate).catch(() => null);
+    if (hourly && hourly.length) return hourly;
+  }
+  return dailyQuery(db, acc, siteUrl, body);
+}
+
+/** Итог за сегодняшний день по Германии — запрос «по дате» ровно за этот день. */
+function isTodayTotals(body: SearchAnalyticsBody): boolean {
+  return (
+    body.dimensions.length === 1 &&
+    body.dimensions[0] === 'date' &&
+    body.startDate === body.endDate &&
+    body.startDate === localToday() &&
+    !body.dimensionFilterGroups?.length &&
+    (body.dataState ?? 'all') === 'all'
+  );
+}
+
+// Если Google отверг почасовой запрос (400), консоль какое-то время его не
+// повторяет, чтобы не удваивать число запросов.
+const hourlyRejected = new Map<string, number>();
+const HOURLY_RETRY_MS = 10 * 60 * 1000;
+
+/**
+ * Сумма почасовых данных Google за день `day` по времени Германии (как «24 часа»
+ * в Search Console). Час Google помечает моментом с часовым поясом; день по
+ * Германии начинается накануне по Калифорнии, поэтому спрашиваем два дня.
+ */
+async function todayFromHourly(db: Db, acc: AccountRow, siteUrl: string, day: string): Promise<SearchAnalyticsRow[]> {
+  if ((hourlyRejected.get(acc.id) ?? 0) > Date.now()) return [];
+  let rows: SearchAnalyticsRow[];
+  try {
+    rows = await dailyQuery(db, acc, siteUrl, {
+      startDate: addCalendarDays(day, -1),
+      endDate: day,
+      dimensions: ['HOUR'],
+      dataState: 'HOURLY_ALL',
+      rowLimit: 200
+    });
+  } catch (e) {
+    if (/searchAnalytics 400/.test((e as Error).message)) hourlyRejected.set(acc.id, Date.now() + HOURLY_RETRY_MS);
+    throw e;
+  }
+  let clicks = 0, impressions = 0, posSum = 0;
+  for (const r of rows) {
+    const at = hourInstant(r.keys[0] ?? '');
+    if (at === null || localToday(at) !== day) continue;
+    clicks += r.clicks;
+    impressions += r.impressions;
+    posSum += r.position * r.impressions;
+  }
+  if (!clicks && !impressions) return [];
+  return [{ keys: [day], clicks, impressions, ctr: impressions ? clicks / impressions : 0, position: impressions ? posSum / impressions : 0 }];
+}
+
+const laHour = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23'
+});
+
+/** Момент начала часа из ключа Google («2026-11-01T05:00:00-08:00»). */
+export function hourInstant(key: string): number | null {
+  if (!/^\d{4}-\d\d-\d\dT\d\d/.test(key)) return null;
+  if (/(Z|[+-]\d\d:?\d\d)$/.test(key)) {
+    const t = Date.parse(key);
+    return Number.isFinite(t) ? t : null;
+  }
+  // Без часового пояса — время Калифорнии: летом -07:00, зимой -08:00.
+  for (const off of ['-07:00', '-08:00']) {
+    const t = Date.parse(key.slice(0, 19) + off);
+    if (!Number.isFinite(t)) continue;
+    const p = Object.fromEntries(laHour.formatToParts(new Date(t)).map((x) => [x.type, x.value]));
+    if (`${p.year}-${p.month}-${p.day}T${p.hour}` === key.slice(0, 13)) return t;
+  }
+  return null;
+}
+
+async function dailyQuery(
   db: Db,
   acc: AccountRow,
   siteUrl: string,

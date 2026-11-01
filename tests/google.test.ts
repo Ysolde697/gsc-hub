@@ -19,6 +19,7 @@ import {
   fetchSiteDecayPages,
   fetchTodayTotals,
   bulkInspect,
+  hourInstant,
   type SearchAnalyticsRow
 } from '../src/lib/server/google';
 
@@ -419,6 +420,65 @@ describe('google.searchAnalyticsQuery', () => {
     expect(getAccount(db, 'a1')!.status).toBe('revoked');
   });
 
+  it('«Сегодня» sums Google hourly data inside the German calendar day', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-11-01T18:00:00Z')); // 19:00 в Германии
+      upsertAccount(db, {
+        id: 'h1', email: 'h1@x', access_token: 't1', refresh_token: 'r', expires_at: Math.floor(Date.now() / 1000) + 7200, scope: 's'
+      });
+      const bodies: Record<string, unknown>[] = [];
+      vi.stubGlobal('fetch', vi.fn(async (_u: string, init?: RequestInit) => {
+        const b = JSON.parse(String(init?.body));
+        bodies.push(b);
+        if (b.dataState !== 'HOURLY_ALL') return new Response(JSON.stringify({ rows: [] }), { status: 200 });
+        return new Response(JSON.stringify({ rows: [
+          { keys: ['2026-10-31T14:00:00-07:00'], clicks: 9, impressions: 90, ctr: 0.1, position: 1 }, // 22:00 31.10 по Германии — вчера
+          { keys: ['2026-10-31T16:00:00-07:00'], clicks: 1, impressions: 100, ctr: 0.01, position: 10 }, // 00:00 01.11
+          { keys: ['2026-11-01T05:00:00-08:00'], clicks: 2, impressions: 300, ctr: 0.0067, position: 20 } // 14:00 01.11
+        ] }), { status: 200 });
+      }));
+      const rows = await searchAnalyticsQuery(db, getAccount(db, 'h1')!, 'https://hourly.example/', {
+        startDate: '2026-11-01', endDate: '2026-11-01', dimensions: ['date']
+      });
+      expect(bodies[0]).toMatchObject({ dataState: 'HOURLY_ALL', dimensions: ['HOUR'], startDate: '2026-10-31', endDate: '2026-11-01' });
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ keys: ['2026-11-01'], clicks: 3, impressions: 400 });
+      expect(rows[0].position).toBeCloseTo(17.5);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('«Сегодня» falls back to daily data when Google rejects the hourly request', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-11-01T18:00:00Z'));
+      upsertAccount(db, {
+        id: 'h2', email: 'h2@x', access_token: 't1', refresh_token: 'r', expires_at: Math.floor(Date.now() / 1000) + 7200, scope: 's'
+      });
+      vi.stubGlobal('fetch', vi.fn(async (_u: string, init?: RequestInit) => {
+        const b = JSON.parse(String(init?.body));
+        if (b.dataState === 'HOURLY_ALL') return new Response('bad request', { status: 400 });
+        return new Response(JSON.stringify({ rows: [{ keys: ['2026-11-01'], clicks: 5, impressions: 50, ctr: 0.1, position: 3 }] }), { status: 200 });
+      }));
+      const rows = await searchAnalyticsQuery(db, getAccount(db, 'h2')!, 'https://hourly-fallback.example/', {
+        startDate: '2026-11-01', endDate: '2026-11-01', dimensions: ['date']
+      });
+      expect(rows[0]).toMatchObject({ clicks: 5, impressions: 50 });
+      expect(getAccount(db, 'h2')!.status).toBe('active');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reads Google hour keys with or without a time zone', () => {
+    expect(hourInstant('2026-11-01T05:00:00-08:00')).toBe(Date.parse('2026-11-01T13:00:00Z'));
+    expect(hourInstant('2026-10-31T16:00:00')).toBe(Date.parse('2026-10-31T23:00:00Z'));
+    expect(hourInstant('2026-11-01T05:00:00')).toBe(Date.parse('2026-11-01T13:00:00Z'));
+    expect(hourInstant('nonsense')).toBeNull();
+  });
+
   it('re-asks Google after 10 minutes for a day it is still filling, keeps older days for an hour', async () => {
     vi.useFakeTimers();
     try {
@@ -433,10 +493,10 @@ describe('google.searchAnalyticsQuery', () => {
       const ask = (d: string) =>
         searchAnalyticsQuery(db, acc, 'https://fresh-ttl.example/', { startDate: d, endDate: d, dimensions: ['date'] });
 
-      await ask('2026-11-01');
+      await ask('2026-10-31');
       await ask('2026-10-20');
       vi.setSystemTime(new Date('2026-11-01T17:11:00Z'));
-      await ask('2026-11-01');
+      await ask('2026-10-31');
       await ask('2026-10-20');
       expect(fetchMock).toHaveBeenCalledTimes(3);
     } finally {
@@ -1210,7 +1270,10 @@ describe('google date windows', () => {
     const today = await fetchTodayTotals(db);
     // «Сегодня» — по Германии: 23.08 08:00 по Берлину, а у Google (Калифорния)
     // ещё 22.08 — день помечен как «ещё не начался», начало в 09:00 (летнее время).
-    expect(windows[0]).toEqual({ startDate: '2026-08-23', endDate: '2026-08-23' });
+    // Сначала почасовые данные (день по Германии начинается накануне по
+    // Калифорнии), потом — раз их нет — суточные за сам день.
+    expect(windows[0]).toEqual({ startDate: '2026-08-22', endDate: '2026-08-23' });
+    expect(windows).toContainEqual({ startDate: '2026-08-23', endDate: '2026-08-23' });
     expect(today.date).toBe('2026-08-23');
     expect(today.pending).toBe(true);
     expect(today.startsAt).toBe('09:00');
