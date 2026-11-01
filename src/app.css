@@ -388,6 +388,10 @@
   .update-banner button {
     @apply leading-none text-acc/60 transition-colors duration-150 hover:text-acc-deep;
   }
+  /* Период «Сегодня»: почему в колонках Google утром нули. */
+  .period-note {
+    @apply border-b border-line bg-sunk px-4 py-1.5 text-xs text-ink-2;
+  }
   /* Консоль Google не отвечает: над каждой страницей, пока не починится. */
   .console-alert {
     @apply border-b border-warn/30 bg-warn-t px-4 py-2 text-xs text-warn;
@@ -424,7 +428,8 @@
   .app-footer,
   .app-nav,
   .update-banner,
-  .console-alert {
+  .console-alert,
+  .period-note {
     display: none !important;
   }
   a {

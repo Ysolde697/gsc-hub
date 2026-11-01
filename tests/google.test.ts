@@ -419,6 +419,31 @@ describe('google.searchAnalyticsQuery', () => {
     expect(getAccount(db, 'a1')!.status).toBe('revoked');
   });
 
+  it('re-asks Google after 10 minutes for a day it is still filling, keeps older days for an hour', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-11-01T17:00:00Z')); // 09:00 в Калифорнии
+      const future = Math.floor(Date.now() / 1000) + 7200;
+      upsertAccount(db, {
+        id: 'a1', email: 'a1@x', access_token: 't1', refresh_token: 'r', expires_at: future, scope: 's'
+      });
+      const fetchMock = vi.fn(async () => new Response(JSON.stringify({ rows: [] }), { status: 200 }));
+      vi.stubGlobal('fetch', fetchMock);
+      const acc = getAccount(db, 'a1')!;
+      const ask = (d: string) =>
+        searchAnalyticsQuery(db, acc, 'https://fresh-ttl.example/', { startDate: d, endDate: d, dimensions: ['date'] });
+
+      await ask('2026-11-01');
+      await ask('2026-10-20');
+      vi.setSystemTime(new Date('2026-11-01T17:11:00Z'));
+      await ask('2026-11-01');
+      await ask('2026-10-20');
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('caches by the whole body: different filters are different entries', async () => {
     const future = Math.floor(Date.now() / 1000) + 3600;
     upsertAccount(db, {

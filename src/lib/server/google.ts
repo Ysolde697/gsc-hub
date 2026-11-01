@@ -22,6 +22,8 @@ import { mergePageFragments } from './merge-fragments';
 import { foldQuery, hostKey } from '$lib/utils/fold-query';
 
 const REFRESH_URL = 'https://oauth2.googleapis.com/token';
+/** Сколько держать в кэше ответ за дни, которые Google ещё дописывает. */
+const FRESH_TTL_MS = 10 * 60 * 1000;
 const SITES_URL = 'https://searchconsole.googleapis.com/webmasters/v3/sites';
 const SEARCH_ANALYTICS_URL = (siteUrl: string) =>
   `https://searchconsole.googleapis.com/webmasters/v3/sites/${encodeURIComponent(
@@ -259,6 +261,9 @@ export async function searchAnalyticsQuery(
   // Default to fresh data ('all') so short windows like days=1 work.
   // Callers can override with dataState: 'final' for stable-only queries.
   const payload: SearchAnalyticsBody = { dataState: 'all', ...body };
+  // Последние сутки Google ещё дописывает: такой ответ (часто пустой утром)
+  // держим 10 минут, а не час, чтобы цифры появились, как только он их выложит.
+  const fresh = payload.endDate >= addCalendarDays(gscToday(), -1);
   return gscCached(`saq:${acc.id}:${siteUrl}:${stableKey(payload)}`, async () => {
     const res = await authorizedFetch(
       db,
@@ -277,7 +282,7 @@ export async function searchAnalyticsQuery(
     markActiveIfNeeded(db, acc);
     // Страницы с якорями (#bonus, #faq) — одна страница: склеиваем.
     return mergePageFragments(json.rows ?? [], (payload.dimensions ?? []).indexOf('page'));
-  });
+  }, fresh ? FRESH_TTL_MS : undefined);
 }
 
 // Deterministic key for a cache entry: the whole body, nested filters

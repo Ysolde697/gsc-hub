@@ -41,6 +41,10 @@
       (c) => c.status !== 'active'
     )
   );
+  // «Сегодня»: Google выкладывает цифры за день с задержкой в несколько часов,
+  // а его сутки идут по Калифорнии. Без пояснения утренние нули выглядят как поломка.
+  const californiaNow = () =>
+    new Intl.DateTimeFormat('ru-RU', { timeZone: 'America/Los_Angeles', hour: '2-digit', minute: '2-digit' }).format(new Date());
   const testingExpiry = $derived(brokenConsoles.some((c) => c.status === 'revoked' && /invalid_grant/i.test(c.error ?? '')));
   const user = $derived(data?.user ?? null);
   const isAdmin = $derived(user?.role === 'admin');
@@ -199,6 +203,17 @@
       <form method="POST" action="/logout"><button class="btn btn-ghost btn-sm">Выйти</button></form>
     </div>
   </header>
+{/if}
+
+{#if user && isAdmin && data?.period?.key === 'today'}
+  <div class="period-note">
+    {#if data.period.pending}
+      Google ещё не начал сегодняшний день: его сутки идут по Калифорнии и начнутся{data.period.startsAt ? ` в ${data.period.startsAt}` : ''}. До этого в колонках Google за «Сегодня» будут нули.
+    {:else}
+      Цифры Google за «Сегодня» приходят с задержкой в несколько часов: его сутки идут по Калифорнии, там сейчас {californiaNow()}. Нули в первой половине дня значат «Google ещё не выложил», а не поломку; хаб перепроверяет каждые 10 минут.
+    {/if}
+    Счётчик кнопок на ваших сайтах пишет данные сразу.
+  </div>
 {/if}
 
 {#if user && isAdmin && brokenConsoles.length}
