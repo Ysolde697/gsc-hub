@@ -12,7 +12,8 @@ import {
   markRevoked,
   markError,
   markActive,
-  updateTokens
+  updateTokens,
+  listReportAccounts
 } from '../src/lib/server/accounts';
 
 describe('accounts', () => {
@@ -119,5 +120,13 @@ describe('accounts', () => {
     upsertAccount(db, { ...sample, id: 's1', owner_id: 'u2', access_token: 'AT2' });
     expect(getAccount(db, 's1')!.owner_id).toBe('u1');
     expect(getAccount(db, 's1')!.access_token).toBe('AT2');
+  });
+
+  it('reports keep a console with a temporary error and drop a revoked one', () => {
+    for (const id of ['ok', 'err', 'gone'])
+      upsertAccount(db, { id, email: `${id}@x`, access_token: 't', refresh_token: 'r', expires_at: 0, scope: 's' });
+    markError(db, 'err', 'sites.list 503');
+    markRevoked(db, 'gone', 'refresh 400: invalid_grant');
+    expect(listReportAccounts(db).map((a) => a.id).sort()).toEqual(['err', 'ok']);
   });
 });

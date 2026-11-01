@@ -186,10 +186,15 @@
                     <svg viewBox="0 0 16 16" class="h-3 w-3 shrink-0 text-ink-4 transition-transform {open.has(s.host) ? 'rotate-90' : ''}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5"/></svg>
                     {s.host}
                     {#if !data.lastSeen[s.host]}<span class="badge badge-muted ml-1 font-normal" title="С этого сайта ещё не пришло ни одного события — маршрут Worker в Cloudflare не добавлен">счётчик не стоит</span>{/if}
+                    {#if data.noConsole.includes(s.host)}<span class="badge badge-warn ml-1 font-normal" title="Счётчик работает. Показов и кликов Google нет: консоль этого сайта отключена или Google не ответил — см. плашку вверху и страницу Accounts">нет консоли Google</span>{/if}
                   </span>
                 </td>
-                <td class="num app-num">{fmt(s.impr)}</td>
-                <td class="num app-num">{fmt(s.gsc)}</td>
+                {#if data.gscErr[s.host]}
+                  <td class="num app-num text-dn" colspan="2" title={data.gscErr[s.host]}>ошибка Google</td>
+                {:else}
+                  <td class="num app-num">{data.noConsole.includes(s.host) ? '—' : fmt(s.impr)}</td>
+                  <td class="num app-num">{data.noConsole.includes(s.host) ? '—' : fmt(s.gsc)}</td>
+                {/if}
                 <td class="num app-num">{fmt(s.views)}</td>
                 <td class="num app-num">{dur(s.avg)}</td>
                 <td class="num app-num">{fmt(s.buttons)}</td>

@@ -103,7 +103,7 @@
                   {#if c.label}<span class="pii block truncate text-[11px] text-ink-3">{c.email}</span>{/if}
                 </span>
                 {#if c.status !== 'active'}
-                  <span class="badge {c.status === 'revoked' ? 'badge-bad' : 'badge-warn'}" title="Консоль не отвечает и в отчёты не попадёт, пока её не переподключат">{c.status}</span>
+                  <span class="badge {c.status === 'revoked' ? 'badge-bad' : 'badge-warn'}" title={c.status === 'revoked' ? 'Google отключил доступ: сайтов этой консоли нет в отчётах, пока её не переподключат (Accounts → Connect)' : 'Google ответил ошибкой; хаб повторяет запросы сам'}>{c.status}</span>
                 {/if}
               </label>
               <button

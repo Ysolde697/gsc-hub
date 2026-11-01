@@ -7,6 +7,7 @@ import { requireAdmin } from '$lib/server/guard';
 import { parsePeriod, sitesForPeriod } from '$lib/server/site-keys';
 import { clicksForRange, lastSeen, normHost, timeForRange, workerScript } from '$lib/server/button-clicks';
 import { siteHostname } from '$lib/utils/url-filters';
+import { listAllKnownSites } from '$lib/server/google';
 import { activeGroupHosts } from '$lib/server/site-groups';
 
 export const load: PageServerLoad = async ({ locals, url }) => {
@@ -21,6 +22,9 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const hosts = new Set<string>();
   const gsc: Record<string, number> = {};
   const gscImpr: Record<string, number> = {};
+  // Запрос к Google по сайту упал: вместо нулей показываем «ошибка» с текстом.
+  const gscErr: Record<string, string> = {};
+  const gscOk = new Set<string>();
   for (const s of sites) {
     try {
       const h = normHost(siteHostname(s.siteUrl));
@@ -28,9 +32,32 @@ export const load: PageServerLoad = async ({ locals, url }) => {
       hosts.add(h);
       gsc[h] = Math.max(gsc[h] ?? 0, s.clicks);
       gscImpr[h] = Math.max(gscImpr[h] ?? 0, s.impressions);
+      if (s.error) gscErr[h] ??= s.error;
+      else gscOk.add(h);
     } catch {
       /* битый адрес */
     }
+  }
+  for (const h of gscOk) delete gscErr[h];
+  const time = timeForRange(db(), period.startDate, period.endDate);
+  // Сайты, от которых счётчик прислал данные, но которых нет ни в одной рабочей
+  // консоли (её доступ отозван или Google не отдал список): данные счётчика всё
+  // равно показываем. Сайты консолей, снятых галочкой в шапке, остаются скрытыми.
+  const missing = new Set<string>();
+  for (const r of [...clicks, ...time]) if (!hosts.has(r.host) && (!group || group.has(r.host))) missing.add(r.host);
+  const noConsole: string[] = [];
+  if (missing.size) {
+    const anywhere = new Set<string>();
+    const all = await listAllKnownSites(db()).catch(() => ({ sites: [] as { siteUrl: string }[] }));
+    for (const s of all.sites) {
+      try {
+        anywhere.add(normHost(siteHostname(s.siteUrl)));
+      } catch {
+        /* битый адрес */
+      }
+    }
+    for (const h of missing) if (!anywhere.has(h)) noConsole.push(h);
+    for (const h of noConsole) hosts.add(h);
   }
   const mine = (h: string) => hosts.has(h);
   const seen = Object.fromEntries(Object.entries(lastSeen(db())).filter(([h]) => mine(h)));
@@ -38,9 +65,9 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     period,
     hosts: [...hosts].sort(),
     clicks: clicks.filter((r) => mine(r.host)),
-    time: timeForRange(db(), period.startDate, period.endDate).filter((t) => mine(t.host)),
+    time: time.filter((t) => mine(t.host)),
     gsc,
-    gscImpr, lastSeen: seen, errors, workerCode: workerScript(url.origin), counterKey: ensureCounterKey(db()), keys: listCounterKeys(db()) };
+    gscImpr, gscErr, noConsole, lastSeen: seen, errors, workerCode: workerScript(url.origin), counterKey: ensureCounterKey(db()), keys: listCounterKeys(db()) };
 };
 
 export const actions: Actions = {

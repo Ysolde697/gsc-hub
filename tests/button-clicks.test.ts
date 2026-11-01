@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openDb, type Db } from '../src/lib/server/db';
-import { parseClick, recordClick, clicksForRange, allowClick, lastSeen, parseTime, recordTime, timeForRange, pageSnippet, workerScript, parseWorkerEvent, isBotUA } from '../src/lib/server/button-clicks';
+import { parseClick, recordClick, clicksForRange, allowClick, lastSeen, parseTime, recordTime, timeForRange, pageSnippet, workerScript, parseWorkerEvent, isBotUA, countedHosts } from '../src/lib/server/button-clicks';
 import { isPublicPath } from '../src/lib/server/guard';
 
 const q = (o: Record<string, string>) => new URLSearchParams(o);
@@ -36,6 +36,11 @@ describe('recordClick / clicksForRange', () => {
   afterEach(() => {
     db.close();
     rmSync(dir, { recursive: true, force: true });
+  });
+  it('помнит домены, от которых уже принимали события (клики и время)', () => {
+    recordClick(db, { host: 'a.com', page: '/', kind: 'view', label: '(без текста)', target: '' }, '2026-10-28');
+    recordTime(db, { host: 'b.com', page: '/', seconds: 5 }, '2026-10-29');
+    expect([...countedHosts(db)].sort()).toEqual(['a.com', 'b.com']);
   });
   it('суммирует по дням', () => {
     const e = { host: 'fccoins.co.uk', page: '/', kind: 'submit' as const, label: 'Go to the checkout', target: '/order/' };

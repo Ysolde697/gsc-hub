@@ -22,7 +22,7 @@ export const POST: RequestHandler = async ({ request, url, locals }) => {
 
   const acc = getAccount(db(), body.account);
   if (!acc) throw error(404, 'account not found');
-  if (acc.status !== 'active') throw error(409, `account is ${acc.status}; reconnect`);
+  if (acc.status === 'revoked') throw error(409, `account is ${acc.status}; reconnect`);
 
   const force = url.searchParams.get('force') === '1';
   const urlsHash = hashUrls(body.urls);

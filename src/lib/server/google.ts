@@ -7,8 +7,10 @@ import { siteCountries } from '$lib/utils/site-geo';
 import { getGoogleClientId, getGoogleClientSecret } from './config';
 import {
   type AccountRow,
+  isUsableAccount,
   listAccounts,
   listReportAccounts,
+  markActiveIfNeeded,
   markError,
   markRevoked,
   updateTokens
@@ -67,7 +69,7 @@ export function refreshIfNeeded(db: Db, acc: AccountRow): Promise<string> {
 
   // A fan-out hands the same AccountRow to every per-site call, so an expired token would
   // otherwise trigger one token-endpoint POST per site. Google answers a refresh storm with
-  // 400s, which the handler below reads as invalid_grant and marks the account revoked.
+  // 400s; only an explicit invalid_grant marks the account revoked (see doRefresh).
   const pending = refreshing.get(acc.id);
   if (pending) return pending;
 
@@ -92,7 +94,11 @@ async function doRefresh(db: Db, acc: AccountRow): Promise<string> {
 
   if (!res.ok) {
     const text = await res.text();
-    if (res.status === 400 || res.status === 401) {
+    // Только invalid_grant значит, что доступ правда отозван или истёк (у
+    // приложения Google в режиме Testing — через 7 дней): поможет лишь
+    // переподключение. Остальное (перегрузка, сбой, шторм обновлений) —
+    // временная ошибка: консоль остаётся в работе, следующий запрос повторит.
+    if (/invalid_grant/i.test(text)) {
       markRevoked(db, acc.id, `refresh ${res.status}: ${text.slice(0, 200)}`);
       throw new Error(`refresh failed (revoked): ${text}`);
     }
@@ -106,6 +112,7 @@ async function doRefresh(db: Db, acc: AccountRow): Promise<string> {
   // Keep the shared row in sync — the rest of the fan-out reads it, not the DB.
   acc.access_token = json.access_token;
   acc.expires_at = newExp;
+  markActiveIfNeeded(db, acc);
   return json.access_token;
 }
 
@@ -115,15 +122,23 @@ async function authorizedFetch(
   url: string,
   init?: RequestInit
 ): Promise<Response> {
+  const send = (token: string) =>
+    fetch(url, {
+      ...init,
+      headers: {
+        ...(init?.headers ?? {}),
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
   const token = await refreshIfNeeded(db, acc);
-  return fetch(url, {
-    ...init,
-    headers: {
-      ...(init?.headers ?? {}),
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    }
-  });
+  const res = await send(token);
+  if (res.status !== 401) return res;
+  // Токен мог перестать действовать раньше срока: обновить и повторить один раз.
+  // Если его уже обновил соседний запрос той же раскладки — берём новый, не
+  // обновляя ещё раз. 401 после свежего токена вызывающий считает отзывом.
+  if (acc.access_token === token) acc.expires_at = 0;
+  return send(await refreshIfNeeded(db, acc));
 }
 
 export async function listSitesForAccount(
@@ -144,6 +159,7 @@ export async function listSitesForAccount(
     const json = (await res.json()) as {
       siteEntry?: { siteUrl: string; permissionLevel: string }[];
     };
+    markActiveIfNeeded(db, acc);
     return (json.siteEntry ?? []).map((s) => ({
       siteUrl: s.siteUrl,
       permissionLevel: s.permissionLevel,
@@ -170,7 +186,7 @@ async function listReportSitesForAccount(db: Db, acc: AccountRow): Promise<SiteR
  * чтобы на странице групп можно было выбрать любой сайт.
  */
 export async function listAllKnownSites(db: Db): Promise<SitesFanOut> {
-  const accounts = listAccounts(db).filter((a) => a.status === 'active');
+  const accounts = listAccounts(db).filter(isUsableAccount);
   const sites: SiteRow[] = [];
   const errors: SitesFanOut['errors'] = [];
   const settled = await Promise.allSettled(accounts.map((a) => listSitesForAccount(db, a)));
@@ -258,6 +274,7 @@ export async function searchAnalyticsQuery(
       throw new Error(`searchAnalytics ${res.status}: ${(await res.text()).slice(0, 200)}`);
     }
     const json = (await res.json()) as { rows?: SearchAnalyticsRow[] };
+    markActiveIfNeeded(db, acc);
     // Страницы с якорями (#bonus, #faq) — одна страница: склеиваем.
     return mergePageFragments(json.rows ?? [], (payload.dimensions ?? []).indexOf('page'));
   });
@@ -1451,7 +1468,7 @@ export interface QueryOwner {
 /** Ключ → все ваши сайты с показами по нему (и один сайт тоже). */
 export async function fetchQueryHosts(db: Db, days = 28): Promise<Map<string, QueryOwner[]>> {
   return gscCached(`qhosts:${days}`, async () => {
-    const accounts = listAccounts(db).filter((a) => a.status === 'active');
+    const accounts = listAccounts(db).filter(isUsableAccount);
     const perAccount = await Promise.allSettled(accounts.map((a) => listSitesForAccount(db, a)));
     const pairs: { acc: AccountRow; site: SiteRow }[] = [];
     perAccount.forEach((r, i) => {
@@ -1497,7 +1514,7 @@ export async function fetchQueryOwners(db: Db, days = 28): Promise<Map<string, Q
 /** Домен → его страны (см. siteCountries). Один запрос по странам на каждую property, кэш час. */
 export async function fetchSiteGeos(db: Db, days = 28): Promise<Map<string, string[]>> {
   return gscCached(`geos:${days}`, async () => {
-    const accounts = listAccounts(db).filter((a) => a.status === 'active');
+    const accounts = listAccounts(db).filter(isUsableAccount);
     const perAccount = await Promise.allSettled(accounts.map((a) => listSitesForAccount(db, a)));
     const pairs: { acc: AccountRow; site: SiteRow }[] = [];
     perAccount.forEach((r, i) => {
@@ -1558,7 +1575,7 @@ export async function searchKeywordAcrossSites(
   days = 28
 ): Promise<KeywordSearchResult> {
   const run = async (): Promise<KeywordSearchResult> => {
-    const accounts = listAccounts(db).filter((a) => a.status === 'active');
+    const accounts = listAccounts(db).filter(isUsableAccount);
     const perAccount = await Promise.allSettled(accounts.map((a) => listSitesForAccount(db, a)));
     const pairs: { acc: AccountRow; site: SiteRow }[] = [];
     let noAccess = 0;

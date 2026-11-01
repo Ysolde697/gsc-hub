@@ -34,6 +34,14 @@
   });
   const isActive = (href: string) => activeHref === href;
   let { children, data } = $props();
+  // Консоли, с которыми Google сейчас не работает: плашка над каждой страницей,
+  // чтобы нули и пропавшие сайты не выглядели как «данных нет».
+  const brokenConsoles = $derived(
+    ((data?.consoles ?? []) as { id: string; email: string; label: string | null; status: string; error?: string | null }[]).filter(
+      (c) => c.status !== 'active'
+    )
+  );
+  const testingExpiry = $derived(brokenConsoles.some((c) => c.status === 'revoked' && /invalid_grant/i.test(c.error ?? '')));
   const user = $derived(data?.user ?? null);
   const isAdmin = $derived(user?.role === 'admin');
 
@@ -191,6 +199,26 @@
       <form method="POST" action="/logout"><button class="btn btn-ghost btn-sm">Выйти</button></form>
     </div>
   </header>
+{/if}
+
+{#if user && isAdmin && brokenConsoles.length}
+  <div class="console-alert" role="alert">
+    {#each brokenConsoles as c (c.id)}
+      <p>
+        {#if c.status === 'revoked'}
+          <b>Google отключил доступ к консоли <span class="pii">{c.label || c.email}</span>.</b>
+          Её сайтов нет в отчётах, пока её не переподключить: <a href="/">Accounts</a> → Connect тем же аккаунтом Google.
+        {:else}
+          <b>Google ответил ошибкой для консоли <span class="pii">{c.label || c.email}</span>.</b>
+          Хаб повторяет запросы сам; если ошибка не уходит, переподключите консоль на странице <a href="/">Accounts</a>.
+        {/if}
+        {#if c.error}<span class="console-alert__why">Ответ Google: {c.error}</span>{/if}
+      </p>
+    {/each}
+    {#if testingExpiry}
+      <p class="console-alert__why">Если доступ слетает каждые 7 дней, приложение Google в режиме «Testing»: Google Cloud → Google Auth Platform → Audience → Publish app. После этого переподключите консоль один раз.</p>
+    {/if}
+  </div>
 {/if}
 
 {@render children()}

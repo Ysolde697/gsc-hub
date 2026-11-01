@@ -52,14 +52,25 @@ export function listAccounts(db: Db, ownerId?: string): AccountRow[] {
 }
 
 /**
- * Консоли, из которых строятся отчёты: рабочие (status = active) и не выключенные
- * галочкой «Использовать» (галочки не действуют, пока выбрана группа).
+ * Консоли, из которых строятся отчёты: не отозванные (см. isUsableAccount) и не
+ * выключенные галочкой «Использовать».
  * Страница Accounts по-прежнему показывает все.
  */
 export function listReportAccounts(db: Db): AccountRow[] {
   // Галочки консолей действуют всегда. Выбранная в шапке группа сайтов
   // только сужает список сайтов внутри отмеченных консолей.
-  return listAccounts(db).filter((a) => a.status === 'active' && a.in_use !== 0);
+  return listAccounts(db).filter((a) => isUsableAccount(a) && a.in_use !== 0);
+}
+
+/**
+ * С консолью можно работать, если доступ не отозван. Временная ошибка Google
+ * (status 'error': перегрузка, сбой сети) консоль из отчётов не убирает:
+ * запросы к ней повторяются, и первый удачный возвращает её в 'active'.
+ * Раньше одна ночная ошибка выключала консоль насовсем — её сайты пропадали
+ * из отчётов, а события счётчика с них не принимались.
+ */
+export function isUsableAccount(a: Pick<AccountRow, 'status'>): boolean {
+  return a.status !== 'revoked';
 }
 
 /** Включить или выключить одну консоль. */
@@ -119,6 +130,14 @@ export function markActive(db: Db, id: string): void {
   db.prepare(
     "UPDATE google_accounts SET status = 'active', last_error = NULL WHERE id = ?"
   ).run(id);
+}
+
+/** После удачного запроса к Google: консоль снова рабочая (без записи, если уже). */
+export function markActiveIfNeeded(db: Db, acc: AccountRow): void {
+  if (acc.status === 'active') return;
+  markActive(db, acc.id);
+  acc.status = 'active';
+  acc.last_error = null;
 }
 
 export function updateTokens(

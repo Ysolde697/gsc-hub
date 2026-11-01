@@ -18,7 +18,7 @@ export const GET: RequestHandler = async ({ url, locals, request }) => {
 
   const acc = getAccount(db(), accountId);
   if (!acc) throw error(404, 'account not found');
-  if (acc.status !== 'active') throw error(409, `account is ${acc.status}; reconnect`);
+  if (acc.status === 'revoked') throw error(409, `account is ${acc.status}; reconnect`);
 
   // Тот же период, что в шапке и на экране.
   const { startDate, endDate } = reportPeriod(db());

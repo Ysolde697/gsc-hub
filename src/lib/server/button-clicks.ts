@@ -87,6 +87,16 @@ export function clicksForRange(db: Db, startDate: string, endDate: string): Clic
     .all(startDate, endDate) as ClickRow[];
 }
 
+/**
+ * Домены, от которых счётчик уже принимал события. Приём не должен зависеть
+ * от того, ответил ли Google прямо сейчас: если консоль временно недоступна,
+ * события её сайтов всё равно записываются.
+ */
+export function countedHosts(db: Db): Set<string> {
+  const rows = db.prepare('SELECT DISTINCT host FROM button_clicks UNION SELECT DISTINCT host FROM page_time').all() as { host: string }[];
+  return new Set(rows.map((r) => r.host));
+}
+
 /** Когда от сайта последний раз приходили данные — проверка установки. */
 export function lastSeen(db: Db): Record<string, string> {
   const rows = db.prepare('SELECT host, MAX(day) AS day FROM button_clicks GROUP BY host').all() as { host: string; day: string }[];

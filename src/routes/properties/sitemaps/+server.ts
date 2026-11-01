@@ -10,7 +10,7 @@ function resolveAccount(accountId: string | null, site: string | null) {
   if (!accountId || !site) throw error(400, 'account and site required');
   const acc = getAccount(db(), accountId);
   if (!acc) throw error(404, 'account not found');
-  if (acc.status !== 'active') throw error(409, `account is ${acc.status}; reconnect`);
+  if (acc.status === 'revoked') throw error(409, `account is ${acc.status}; reconnect`);
   return acc;
 }
 

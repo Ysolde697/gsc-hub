@@ -4,7 +4,7 @@ import type { DimensionFilterGroup, SearchAnalyticsRow, SiteRow } from './google
 import { listSitesForAllAccounts, searchAnalyticsPages, searchAnalyticsQuery } from './google';
 import { mapSettledLimit, DEFAULT_LIMIT } from './concurrency';
 import { completedDayRange } from './gsc-calendar';
-import { listAccounts } from './accounts';
+import { isUsableAccount, listAccounts } from './accounts';
 import type { AccountRow } from './accounts';
 import { listHiddenSites } from './hidden';
 import { alpha2ToAlpha3, alpha3ToAlpha2 } from '$lib/utils/country';
@@ -312,7 +312,7 @@ async function pickAccount(db: Db, site: string): Promise<AccountRow> {
       .map((s) => s.accountId)
   );
   const account = listAccounts(db)
-    .filter((a) => a.status === 'active' && owning.has(a.id))
+    .filter((a) => isUsableAccount(a) && owning.has(a.id))
     .sort((a, b) => a.added_at - b.added_at || a.id.localeCompare(b.id))[0];
   if (!account) throw error(409, 'no active google account for this site');
   return account;

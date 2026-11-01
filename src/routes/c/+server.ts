@@ -3,7 +3,7 @@ import { db } from '$lib/server/db';
 import { listAllKnownSites } from '$lib/server/google';
 import { siteHostname } from '$lib/utils/url-filters';
 import { counterKeyOk } from '$lib/server/config';
-import { allowClick, clicksToday, isBotUA, normHost, parseWorkerEvent, recordClick, recordTime } from '$lib/server/button-clicks';
+import { allowClick, clicksToday, countedHosts, isBotUA, normHost, parseWorkerEvent, recordClick, recordTime } from '$lib/server/button-clicks';
 
 // Приём событий счётчика от Cloudflare Worker ваших сайтов (без входа, но с
 // секретным ключом). Считаем только ваши сайты из подключённых консолей,
@@ -28,6 +28,19 @@ async function knownHosts(): Promise<Set<string>> {
   return hosts;
 }
 
+// Домены, от которых уже принимали события: читаются из базы один раз и
+// пополняются при каждой записи.
+let counted: Set<string> | null = null;
+
+/** Сайт наш: он в подключённой консоли или от него уже принимали события. */
+async function isKnownHost(host: string): Promise<boolean> {
+  counted ??= countedHosts(db());
+  if (counted.has(host)) return true;
+  if (!(await knownHosts()).has(host)) return false;
+  counted.add(host);
+  return true;
+}
+
 const EMPTY = () => new Response(null, { status: 204, headers: { 'Cache-Control': 'no-store' } });
 
 
@@ -44,7 +57,7 @@ export const POST: RequestHandler = async ({ request }) => {
     // Любой выданный и не отозванный ключ; запоминаем, с какого сайта он пришёл.
     if (!counterKeyOk(db(), request.headers.get('x-counter-key'), host)) return EMPTY();
     if (isBotUA(ua)) return EMPTY();
-    if (!(await knownHosts()).has(host)) return EMPTY();
+    if (!(await isKnownHost(host))) return EMPTY();
     if ('time' in parsed) {
       if (allowClick(ip, { host, page: parsed.time.page, kind: 'view', label: 'time:' + Date.now(), target: '' })) recordTime(db(), parsed.time);
       return EMPTY();

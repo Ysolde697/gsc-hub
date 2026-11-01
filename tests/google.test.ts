@@ -168,6 +168,15 @@ describe('google.refreshIfNeeded', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('marks error (not revoked) on a 400 refresh failure without invalid_grant', async () => {
+    upsertAccount(db, { ...baseAcc, expires_at: 0 });
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'rate_limit_exceeded' }), { status: 400 })));
+
+    const acc = getAccount(db, 'sub-1')!;
+    await expect(refreshIfNeeded(db, acc)).rejects.toThrow();
+    expect(getAccount(db, 'sub-1')!.status).toBe('error');
+  });
+
   it('marks error (not revoked) on 5xx refresh failure', async () => {
     upsertAccount(db, { ...baseAcc, expires_at: 0 });
     const fetchMock = vi.fn(async () => new Response('upstream broken', { status: 503 }));
@@ -248,7 +257,7 @@ describe('google.listSitesForAllAccounts', () => {
     expect(urls).toEqual(['https://a.com/', 'https://b.com/']);
   });
 
-  it('does not fail the whole call when one account 401s; marks it revoked', async () => {
+  it('does not fail the whole call when one account 401s; marks it revoked once refresh says invalid_grant', async () => {
     const future = Math.floor(Date.now() / 1000) + 3600;
     upsertAccount(db, {
       id: 'a1', email: 'a1@x', access_token: 't1', refresh_token: 'r', expires_at: future, scope: 's'
@@ -258,6 +267,7 @@ describe('google.listSitesForAllAccounts', () => {
     });
 
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === REFRESH_URL) return new Response(JSON.stringify({ error: 'invalid_grant' }), { status: 400 });
       const auth = (init?.headers as Record<string, string>).Authorization;
       if (auth === 'Bearer t1') {
         return new Response(JSON.stringify({ siteEntry: [] }), { status: 200 });
@@ -270,6 +280,27 @@ describe('google.listSitesForAllAccounts', () => {
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0].accountId).toBe('a2');
     expect(getAccount(db, 'a2')!.status).toBe('revoked');
+  });
+
+  it('keeps using a console after a temporary Google error and brings it back to active', async () => {
+    const future = Math.floor(Date.now() / 1000) + 3600;
+    upsertAccount(db, {
+      id: 'a1', email: 'a1@x', access_token: 't1', refresh_token: 'r', expires_at: future, scope: 's'
+    });
+    upsertAccount(db, {
+      id: 'a2', email: 'a2@x', access_token: 't2', refresh_token: 'r', expires_at: future, scope: 's'
+    });
+    db.prepare("UPDATE google_accounts SET status='error', last_error='sites.list 503' WHERE id='a2'").run();
+    const fetchMock = vi.fn(
+      async () => new Response(JSON.stringify({ siteEntry: [{ siteUrl: 'https://b.com/', permissionLevel: 'siteOwner' }] }), { status: 200 })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await listSitesForAllAccounts(db);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result.sites.filter((s) => s.accountId === 'a2')).toHaveLength(1);
+    expect(getAccount(db, 'a2')!.status).toBe('active');
+    expect(getAccount(db, 'a2')!.last_error).toBeNull();
   });
 
   it('skips non-active accounts', async () => {
@@ -331,19 +362,60 @@ describe('google.searchAnalyticsQuery', () => {
     expect(rows[0].keys[0]).toBe('hello');
   });
 
-  it('marks account revoked on 401', async () => {
+  it('refreshes the token and retries once on 401; the console keeps working', async () => {
+    const future = Math.floor(Date.now() / 1000) + 3600;
+    upsertAccount(db, {
+      id: 'a1', email: 'a1@x', access_token: 'stale', refresh_token: 'r', expires_at: future, scope: 's'
+    });
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === REFRESH_URL) return new Response(JSON.stringify({ access_token: 'fresh', expires_in: 3600 }), { status: 200 });
+      const auth = (init?.headers as Record<string, string>).Authorization;
+      if (auth === 'Bearer fresh') return new Response(JSON.stringify({ rows: [{ keys: ['hello'], clicks: 1, impressions: 2, ctr: 0.5, position: 3 }] }), { status: 200 });
+      return new Response('unauthorized', { status: 401 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const acc = getAccount(db, 'a1')!;
+    const rows = await searchAnalyticsQuery(db, acc, 'https://a.com/', {
+      startDate: '2026-04-01', endDate: '2026-04-28', dimensions: ['query']
+    });
+    expect(rows).toHaveLength(1);
+    expect(fetchMock.mock.calls.filter(([u]) => u === REFRESH_URL)).toHaveLength(1);
+    expect(getAccount(db, 'a1')!.status).toBe('active');
+  });
+
+  it('brings a console in error status back to active after a successful query', async () => {
     const future = Math.floor(Date.now() / 1000) + 3600;
     upsertAccount(db, {
       id: 'a1', email: 'a1@x', access_token: 't1', refresh_token: 'r', expires_at: future, scope: 's'
     });
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('unauthorized', { status: 401 })));
+    db.prepare("UPDATE google_accounts SET status='error', last_error='refresh 503' WHERE id='a1'").run();
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ rows: [] }), { status: 200 })));
+
+    const acc = getAccount(db, 'a1')!;
+    await searchAnalyticsQuery(db, acc, 'https://a.com/', {
+      startDate: '2026-04-01', endDate: '2026-04-28', dimensions: ['date']
+    });
+    expect(getAccount(db, 'a1')!.status).toBe('active');
+  });
+
+  it('marks account revoked on 401 when the refresh says invalid_grant', async () => {
+    const future = Math.floor(Date.now() / 1000) + 3600;
+    upsertAccount(db, {
+      id: 'a1', email: 'a1@x', access_token: 't1', refresh_token: 'r', expires_at: future, scope: 's'
+    });
+    vi.stubGlobal('fetch', vi.fn(async (url: string) =>
+      url === REFRESH_URL
+        ? new Response(JSON.stringify({ error: 'invalid_grant' }), { status: 400 })
+        : new Response('unauthorized', { status: 401 })
+    ));
 
     const acc = getAccount(db, 'a1')!;
     await expect(
       searchAnalyticsQuery(db, acc, 'https://a.com/', {
         startDate: '2026-04-01', endDate: '2026-04-28', dimensions: ['query']
       })
-    ).rejects.toThrow(/401/);
+    ).rejects.toThrow(/revoked|401/);
     expect(getAccount(db, 'a1')!.status).toBe('revoked');
   });
 

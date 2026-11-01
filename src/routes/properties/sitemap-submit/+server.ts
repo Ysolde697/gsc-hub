@@ -12,7 +12,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
   const acc = getAccount(db(), account);
   if (!acc) throw error(404, 'account not found');
-  if (acc.status !== 'active') throw error(409, `account is ${acc.status}; reconnect`);
+  if (acc.status === 'revoked') throw error(409, `account is ${acc.status}; reconnect`);
 
   const result = await resubmitSitemapsForSite(db(), acc, site);
   return json(result);
