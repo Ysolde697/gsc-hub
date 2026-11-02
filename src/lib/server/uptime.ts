@@ -7,6 +7,7 @@ import { listAllKnownSites } from './google';
 import { siteHostname } from '$lib/utils/url-filters';
 import { getConfigValue } from './config';
 import { mapSettledLimit } from './concurrency';
+import { refreshDomainDates } from './domain-dates';
 
 export type Level = 'ok' | 'warn' | 'error';
 export interface Problem { level: Level; text: string }
@@ -341,6 +342,8 @@ export function startUptimeMonitor(getDb: () => Db): void {
     running = true;
     try {
       await runDue(getDb());
+      // Даты доменов (регистрация, «оплачен до») — раз в неделю для каждого.
+      await refreshDomainDates(getDb(), await allHosts(getDb()));
     } catch (e) {
       console.error('Uptime monitor:', (e as Error).message);
     } finally {

@@ -286,6 +286,17 @@ CREATE TABLE IF NOT EXISTS user_selection (
   PRIMARY KEY (user_id, kind)
 );
 
+-- Даты доменов: из реестра (RDAP) и вписанные вручную (важнее реестра).
+CREATE TABLE IF NOT EXISTS domain_dates (
+  host              TEXT PRIMARY KEY,
+  registered        TEXT,
+  expires           TEXT,
+  manual_registered TEXT,
+  manual_expires    TEXT,
+  error             TEXT,
+  checked_at        INTEGER NOT NULL DEFAULT 0
+);
+
 -- Доступность сайтов: последний результат по каждой проверяемой странице,
 -- эталон «нормальной» страницы и история смен состояния.
 CREATE TABLE IF NOT EXISTS uptime_checks (

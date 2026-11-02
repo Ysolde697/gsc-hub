@@ -29,12 +29,18 @@
       return { host: h, home, order, level, checkedAt: home?.checkedAt ?? null, since: bad.length ? Math.min(...bad.map((c) => c!.since)) : null };
     })
   );
-  type K = 'host' | 'level' | 'ms' | 'checkedAt';
+  type K = 'host' | 'level' | 'ms' | 'checkedAt' | 'registered' | 'expires';
   const sort = new TableSort<K>('level', 1);
   const rows = $derived(
     sort.apply(
       rowsRaw.filter((r) => !onlyBad || r.level === 'error' || r.level === 'warn'),
-      (r, k) => (k === 'host' ? r.host : k === 'level' ? RANK[r.level] : k === 'ms' ? (r.home?.data.ms ?? null) : r.checkedAt)
+      (r, k) =>
+        k === 'host' ? r.host
+        : k === 'level' ? RANK[r.level]
+        : k === 'ms' ? (r.home?.data.ms ?? null)
+        : k === 'registered' ? (data.domains[r.host]?.registered ?? null)
+        : k === 'expires' ? (data.domains[r.host]?.daysLeft ?? null)
+        : r.checkedAt
     )
   );
   const counts = $derived(rowsRaw.reduce((a, r) => ({ ...a, [r.level]: (a[r.level] ?? 0) + 1 }), {} as Record<string, number>));
@@ -44,6 +50,24 @@
     return m < 60 ? `${m} мин назад` : m < 1440 ? `${Math.round(m / 60)} ч назад` : `${Math.round(m / 1440)} дн. назад`;
   };
   const when = (t: number) => new Date(t).toLocaleString('ru-RU', { timeZone: 'Europe/Berlin', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  // Даты домена: «Оплачен до» краснеет за 14 дней, желтеет за 30.
+  const ru = (d: string | null) => (d ? `${d.slice(8, 10)}.${d.slice(5, 7)}.${d.slice(0, 4)}` : '—');
+  const left = (n: number | null) => (n === null ? '' : n < 0 ? `истёк ${-n} дн. назад` : n === 0 ? 'сегодня' : `через ${n} дн.`);
+  const leftCls = (n: number | null) => (n === null ? 'text-ink-3' : n <= 14 ? 'text-bad font-semibold' : n <= 30 ? 'text-warn font-semibold' : 'text-ink-3');
+  const tld = (h: string) => h.split('.').pop();
+  function noDateWhy(h: string): string {
+    const d = data.domains[h];
+    if (!d?.checked) return 'Ещё не спрашивали реестр — данные появятся в течение минуты, обновите страницу';
+    if (d.error === 'no-rdap') return `Реестр зоны .${tld(h)} не публикует даты — впишите вручную (раскройте строку)`;
+    if (d.error) return `Реестр не ответил (${d.error}) — повторим позже; можно вписать вручную`;
+    return `Реестр зоны .${tld(h)} не отдаёт эту дату — впишите вручную (раскройте строку)`;
+  }
+  const soon = $derived(data.hosts.filter((h) => { const n = data.domains[h]?.daysLeft; return n !== null && n !== undefined && n <= 30; }).length);
+  let busyDomains = $state(false);
+  const domainsWord = (n: number) => {
+    const d = n % 10, h = n % 100;
+    return d === 1 && h !== 11 ? 'домен' : d >= 2 && d <= 4 && (h < 12 || h > 14) ? 'домена' : 'доменов';
+  };
   const LABEL = { ok: 'Всё в порядке', warn: 'Есть замечания', error: 'Проблема', none: 'Ещё не проверялся' } as const;
   const CLS = { ok: 'badge-ok', warn: 'badge-warn', error: 'badge-bad', none: 'badge-muted' } as const;
 </script>
@@ -57,6 +81,7 @@
       <span class="text-xs text-ink-3">
         {counts.error ?? 0} с проблемой · {counts.warn ?? 0} с замечаниями · {counts.ok ?? 0} в порядке{counts.none ? ` · ${counts.none} ещё не проверялись` : ''}
       </span>
+      {#if soon}<span class="badge badge-warn">{soon} {domainsWord(soon)} продлить в ближайшие 30 дней</span>{/if}
       <label class="flex items-center gap-1 text-xs text-ink-2"><input type="checkbox" bind:checked={onlyBad} /> только проблемные</label>
       <label class="flex items-center gap-1 text-xs text-ink-2" title="Без галочки — сайты консолей, выбранных в шапке"><input type="checkbox" checked={data.all} onchange={(e) => goto(e.currentTarget.checked ? '?all=1' : '?', { keepFocus: true, noScroll: true })} /> все консоли</label>
       <span class="flex-1"></span>
@@ -65,6 +90,9 @@
         <select name="h" class="input h-7 text-xs" value={String(data.interval)} onchange={(e) => e.currentTarget.form?.requestSubmit()} aria-label="Частота проверки">
           {#each data.intervals as h (h)}<option value={String(h)}>{h} ч</option>{/each}
         </select>
+      </form>
+      <form method="POST" action="?/refreshDomains" use:enhance={() => { busyDomains = true; return async ({ update }) => { await update(); busyDomains = false; }; }}>
+        <button class="btn btn-sec btn-sm" disabled={busyDomains} title="Спросить у реестров даты регистрации и оплаты всех доменов">{busyDomains ? 'Обновляю даты…' : 'Обновить даты доменов'}</button>
       </form>
       <form method="POST" action="?/checkAll" use:enhance={() => { busy = 'all'; return async ({ update }) => { await update(); busy = null; }; }}>
         <button class="btn btn-pri btn-sm" disabled={!!busy}>{busy === 'all' ? 'Проверяю все сайты…' : 'Проверить все сейчас'}</button>
@@ -87,12 +115,15 @@
               <th>Что не так</th>
               <SortTh {sort} k="ms" label="Скорость" num />
               <SortTh {sort} k="checkedAt" label="Проверен" />
+              <SortTh {sort} k="registered" label="Домен с" title="Когда домен зарегистрирован — из реестра доменов или вписано вручную" />
+              <SortTh {sort} k="expires" label="Оплачен до" title="До какого числа оплачен домен: продлить до этой даты. Жёлтый — меньше 30 дней, красный — меньше 14" />
               <th></th>
             </tr>
           </thead>
           <tbody>
             {#each rows as r (r.host)}
               {@const probs = [...(r.home?.data.problems ?? []).map((p) => ({ ...p, where: 'главная' })), ...(r.order?.data.problems ?? []).map((p) => ({ ...p, where: 'заказ' }))].filter((p) => p.level !== 'ok')}
+              {@const dd = data.domains[r.host]}
               <tr class="cursor-pointer" class:is-selected={open.has(r.host)} onclick={() => toggle(r.host)}>
                 <td class="pii font-semibold text-ink">
                   <span class="flex items-center gap-1">
@@ -107,6 +138,12 @@
                 </td>
                 <td class="num app-num">{r.home ? `${(r.home.data.ms / 1000).toFixed(1)} с` : '—'}</td>
                 <td class="whitespace-nowrap text-xs text-ink-3">{ago(r.checkedAt)}</td>
+                <td class="app-num whitespace-nowrap text-xs" title={dd?.registered ? (dd.registeredManual ? 'Вписано вручную' : 'Из реестра доменов') : noDateWhy(r.host)}>
+                  {#if dd?.registered}{ru(dd.registered)}{#if dd.registeredManual}<span class="ml-0.5 text-ink-4">✎</span>{/if}{:else}<span class="text-ink-4">—</span>{/if}
+                </td>
+                <td class="app-num whitespace-nowrap text-xs" title={dd?.expires ? (dd.expiresManual ? 'Вписано вручную' : 'Из реестра доменов') : noDateWhy(r.host)}>
+                  {#if dd?.expires}{ru(dd.expires)}{#if dd.expiresManual}<span class="ml-0.5 text-ink-4">✎</span>{/if}<div class="text-[11px] {leftCls(dd.daysLeft)}">{left(dd.daysLeft)}</div>{:else}<span class="text-ink-4">—</span>{/if}
+                </td>
                 <td class="whitespace-nowrap text-right" onclick={(e) => e.stopPropagation()}>
                   <form method="POST" action="?/checkOne" class="inline" use:enhance={() => { busy = r.host; return async ({ update }) => { await update(); busy = null; }; }}>
                     <input type="hidden" name="host" value={r.host} />
@@ -122,7 +159,18 @@
               </tr>
               {#if open.has(r.host)}
                 <tr class="bg-sunk hover:bg-sunk">
-                  <td colspan="6" class="px-3 py-2 text-xs">
+                  <td colspan="8" class="px-3 py-2 text-xs">
+                    <form method="POST" action="?/domainDates" use:enhance class="mb-2 flex flex-wrap items-center gap-2 rounded border border-line bg-pane p-2">
+                      <input type="hidden" name="host" value={r.host} />
+                      <span class="font-semibold">Даты домена</span>
+                      <label class="flex items-center gap-1">зарегистрирован <input type="date" name="registered" class="input h-7 text-xs" value={dd?.registeredManual ? dd.registered : ''} placeholder={dd?.registered ?? ''} /></label>
+                      <label class="flex items-center gap-1">оплачен до <input type="date" name="expires" class="input h-7 text-xs" value={dd?.expiresManual ? dd.expires : ''} /></label>
+                      <button class="btn btn-sec btn-sm">Сохранить</button>
+                      <span class="text-ink-3">
+                        {#if dd?.registered || dd?.expires}Сейчас: {ru(dd.registered)} — {ru(dd.expires)}{dd.registeredManual || dd.expiresManual ? ' (✎ — вписано вручную)' : ' (из реестра доменов)'}.{/if}
+                        Пустое поле — брать дату из реестра. {dd?.error === 'no-rdap' ? `Реестр зоны .${tld(r.host)} даты не публикует: впишите их из кабинета регистратора.` : ''}
+                      </span>
+                    </form>
                     <div class="grid gap-3 md:grid-cols-2">
                       {#each [['Главная', r.home], ['Страница заказа', r.order]] as [name, c] (name)}
                         {@const ch = c as Check | null}
