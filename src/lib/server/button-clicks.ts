@@ -2,6 +2,7 @@
 // нажатии шлёт GET /c?… — здесь только +1 к суммам за день (по Германии).
 import type { Db } from './db';
 import { localToday } from './gsc-calendar';
+import { storedSource } from '$lib/utils/traffic-source';
 
 export const CLICK_KINDS = ['submit', 'button', 'out', 'link', 'view'] as const;
 export type ClickKind = (typeof CLICK_KINDS)[number];
@@ -39,7 +40,9 @@ export function parseClick(params: URLSearchParams, referer: string | null): Cli
   if (!host || !(CLICK_KINDS as readonly string[]).includes(kind)) return null;
   let page = clean(params.get('p'), 300) || '/';
   if (!page.startsWith('/')) page = '/' + page;
-  return { host, page, kind, label: clean(params.get('l'), 80) || '(без текста)', target: clean(params.get('t'), 300) };
+  // У просмотра target — откуда пришёл посетитель (см. traffic-source.ts).
+  const target = kind === 'view' && params.has('r') ? storedSource(clean(params.get('r'), 120)) : clean(params.get('t'), 300);
+  return { host, page, kind, label: clean(params.get('l'), 80) || '(без текста)', target };
 }
 
 export function recordClick(db: Db, e: ClickEvent, day: string = localToday()): void {
@@ -154,7 +157,7 @@ export function parseWorkerEvent(
   if (!ev || typeof ev !== 'object') return null;
   const params = new URLSearchParams();
   params.set('h', String(b.h ?? ''));
-  for (const k of ['k', 'p', 'l', 't', 'd']) if (ev[k] !== undefined && ev[k] !== null) params.set(k, String(ev[k]));
+  for (const k of ['k', 'p', 'l', 't', 'd', 'r']) if (ev[k] !== undefined && ev[k] !== null) params.set(k, String(ev[k]));
   if (params.get('k') === 'time') {
     const t = parseTime(params, null);
     return t ? { time: t } : null;
@@ -168,6 +171,8 @@ export const SITE_PATH = '/_e';
 
 /**
  * Код, который Worker вставляет в <head> каждой HTML-страницы.
+ * Просмотр несёт r — откуда пришёл посетитель: домен прошлого сайта, '' — без
+ * адреса (прямой заход), '=' — переход внутри сайта, обновление или «Назад».
  * «Перешли к оплате» записывается на ту страницу, где нажали кнопку. Шлёт события
  * на адрес самого сайта — адреса панели в странице нет.
  * «Дошли до оплаты» считается, только когда после отправки формы реально
@@ -176,8 +181,12 @@ export const SITE_PATH = '/_e';
 export function pageSnippet(path: string = SITE_PATH): string {
   return `(function(){if(window.__ghc)return;window.__ghc=1;var P=${JSON.stringify(path)};
 function send(o){if(!o.p)o.p=location.pathname;var b=JSON.stringify(o);try{if(navigator.sendBeacon&&navigator.sendBeacon(P,new Blob([b],{type:'application/json'})))return}catch(e){}try{fetch(P,{method:'POST',body:b,keepalive:true,headers:{'Content-Type':'application/json'}})}catch(e){}}
-send({k:'view'});
-try{var nav=(performance.getEntriesByType&&performance.getEntriesByType('navigation')[0])||{};var s=JSON.parse(sessionStorage.getItem('__ghs')||'null');sessionStorage.removeItem('__ghs');if(s&&nav.type!=='reload'&&Date.now()-s.at<600000&&location.pathname===s.a)send({k:'submit',l:s.l,t:s.a,p:s.f||s.a})}catch(e){}
+var nav={};try{nav=(performance.getEntriesByType&&performance.getEntriesByType('navigation')[0])||{}}catch(e){}
+var r='';try{if(document.referrer){var ru=new URL(document.referrer);r=ru.host===location.host?'=':ru.host}}catch(e){r='?'}
+if(nav.type==='reload'||nav.type==='back_forward')r='=';
+if(r===''){try{var us=new URLSearchParams(location.search).get('utm_source');if(us)r='utm:'+us}catch(e){}}
+send({k:'view',r:r});
+try{var s=JSON.parse(sessionStorage.getItem('__ghs')||'null');sessionStorage.removeItem('__ghs');if(s&&nav.type!=='reload'&&Date.now()-s.at<600000&&location.pathname===s.a)send({k:'submit',l:s.l,t:s.a,p:s.f||s.a})}catch(e){}
 var shown=document.visibilityState==='visible'?Date.now():0,acc=0;
 function flush(){if(shown){acc+=Date.now()-shown;shown=0}var d=Math.round(acc/1000);if(d<1)return;acc=0;send({k:'time',d:d})}
 document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden')flush();else shown=Date.now()});

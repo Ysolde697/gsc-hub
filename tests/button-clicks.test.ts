@@ -88,6 +88,35 @@ it('код страницы и Worker — корректный JavaScript; ад�
   expect(w).toContain('<script src="');
 });
 
+it('просмотр несёт источник: домен, прямой заход, внутри сайта; старый код — без источника', () => {
+  const view = (r?: string) => parseWorkerEvent({ h: 'fut-coins.nl', e: JSON.stringify(r === undefined ? { k: 'view', p: '/' } : { k: 'view', p: '/', r }) });
+  expect(view('www.google.de')).toMatchObject({ click: { kind: 'view', target: 'google.de' } });
+  expect(view('')).toMatchObject({ click: { kind: 'view', target: '(direct)' } });
+  expect(view('=')).toMatchObject({ click: { kind: 'view', target: '(internal)' } });
+  expect(view()).toMatchObject({ click: { kind: 'view', target: '' } });
+});
+
+it('код страницы передаёт, откуда пришёл посетитель', async () => {
+  async function run(referrer: string, navType = 'navigate', search = '') {
+    const sent: Promise<string>[] = [];
+    const doc = { referrer, visibilityState: 'visible', addEventListener() {} };
+    const loc = { host: 'fut-coins.nl', pathname: '/', search };
+    const nav = { sendBeacon: (_p: string, b: Blob) => { sent.push(b.text()); return true; } };
+    const perf = { getEntriesByType: () => [{ type: navType }] };
+    const store = { getItem: () => null, removeItem() {}, setItem() {} };
+    new Function('window', 'document', 'location', 'navigator', 'performance', 'sessionStorage', 'addEventListener', pageSnippet())(
+      {}, doc, loc, nav, perf, store, () => {}
+    );
+    const first = JSON.parse(await sent[0]);
+    return first;
+  }
+  expect(await run('https://www.google.com/')).toMatchObject({ k: 'view', r: 'www.google.com' });
+  expect(await run('')).toMatchObject({ k: 'view', r: '' });
+  expect(await run('https://fut-coins.nl/faq/')).toMatchObject({ k: 'view', r: '=' });
+  expect(await run('https://www.google.com/', 'reload')).toMatchObject({ k: 'view', r: '=' });
+  expect(await run('', 'navigate', '?utm_source=newsletter')).toMatchObject({ k: 'view', r: 'utm:newsletter' });
+});
+
 it('parseWorkerEvent и боты', () => {
   expect(parseWorkerEvent({ h: 'www.fccoins.fr', e: JSON.stringify({ k: 'submit', p: '/order/', l: 'Commander', t: '/order/' }) })).toEqual({
     click: { host: 'fccoins.fr', page: '/order/', kind: 'submit', label: 'Commander', target: '/order/' }

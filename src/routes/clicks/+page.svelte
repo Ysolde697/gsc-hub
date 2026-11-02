@@ -6,6 +6,7 @@
   import { enhance } from '$app/forms';
   import SortTh from '$lib/components/SortTh.svelte';
   import { TableSort } from '$lib/table-sort.svelte';
+  import { sourceOf, GROUP_LABEL, type SourceGroup } from '$lib/utils/traffic-source';
 
   let { data, form } = $props();
   const KIND: Record<string, string> = { view: 'Просмотр', submit: 'Перешёл к оплате', button: 'Кнопка', out: 'Ссылка на другой сайт', link: 'Обычная ссылка' };
@@ -20,6 +21,31 @@
       /* браузер не дал — пусть скопируют руками */
     }
   }
+
+  // Откуда пришли: входы на сайт (просмотры, у которых счётчик передал
+  // источник; переходы внутри сайта не считаются).
+  type Src = { key: string; label: string; group: SourceGroup; n: number };
+  function sourcesOf(rows: { kind: string; target: string; n: number }[]): Src[] {
+    const m = new Map<string, Src>();
+    for (const r of rows) {
+      if (r.kind !== 'view') continue;
+      const src = sourceOf(r.target);
+      if (!src) continue;
+      const cur = m.get(src.key) ?? m.set(src.key, { ...src, n: 0 }).get(src.key)!;
+      cur.n += r.n;
+    }
+    return [...m.values()].sort((a, b) => b.n - a.n);
+  }
+  const allSources = $derived(sourcesOf(data.clicks));
+  const allSourcesTotal = $derived(allSources.reduce((a, x) => a + x.n, 0));
+  const groupTotals = $derived.by(() => {
+    const g = new Map<SourceGroup, number>();
+    for (const x of allSources) g.set(x.group, (g.get(x.group) ?? 0) + x.n);
+    return [...g.entries()].sort((a, b) => b[1] - a[1]);
+  });
+  // Сайт уже передаёт источники (новый код счётчика): есть просмотры с target.
+  const sendsSources = (h: string) => data.clicks.some((r) => r.host === h && r.kind === 'view' && r.target !== '');
+  const share = (n: number, total: number) => (total ? `${Math.round((n / total) * 100)}%` : '—');
 
   let open = $state<Set<string>>(new Set());
   let withLinks = $state(false);
@@ -160,6 +186,17 @@
       <label class="ml-auto flex items-center gap-1 text-xs text-ink-2"><input type="checkbox" bind:checked={withLinks} /> показывать и обычные ссылки</label>
     </div>
 
+    {#if allSourcesTotal}
+      <div class="border-b border-line px-3 py-2 text-xs text-ink-2">
+        <span class="font-semibold text-ink">Откуда пришли</span>
+        <span class="text-ink-3">· входов на сайты {fmt(allSourcesTotal)}:</span>
+        {#each groupTotals as [g, n] (g)}<span class="ml-2 whitespace-nowrap">{GROUP_LABEL[g]} <b class="app-num">{fmt(n)}</b> <span class="text-ink-3">({share(n, allSourcesTotal)})</span></span>{/each}
+        <div class="mt-1 text-ink-3">
+          {#each allSources.slice(0, 12) as x (x.key)}<span class="mr-3 whitespace-nowrap">{x.label} <span class="app-num text-ink-2">{fmt(x.n)}</span></span>{/each}
+        </div>
+      </div>
+    {/if}
+
     {#if sites.length === 0}
       <p class="p-3 text-ink-3">В выбранных консолях нет сайтов. Отметьте консоль в шапке («Консоли»).</p>
     {:else}
@@ -205,8 +242,32 @@
               {#if open.has(s.host)}
                 {@const list = detail(s.host)}
                 {@const pages = pagesOf(s.host)}
+                {@const srcs = sourcesOf(data.clicks.filter((r) => r.host === s.host))}
+                {@const srcTotal = srcs.reduce((a, x) => a + x.n, 0)}
                 <tr class="bg-sunk hover:bg-sunk">
                   <td colspan="9" class="px-3 py-2">
+                    <div class="mb-1 text-xs font-semibold text-ink-2">Откуда пришли <span class="font-normal text-ink-3">— входы на сайт; переходы внутри сайта не считаются</span></div>
+                    {#if srcs.length}
+                      <table class="app-table mb-3 rounded border border-line bg-pane">
+                        <thead>
+                          <tr><th>Источник</th><th>Что это</th><th class="num">Входов</th><th class="num">Доля</th></tr>
+                        </thead>
+                        <tbody>
+                          {#each srcs as x (x.key)}
+                            <tr>
+                              <td class="pii font-medium">{x.label}</td>
+                              <td class="text-xs text-ink-3">{GROUP_LABEL[x.group]}</td>
+                              <td class="num app-num">{fmt(x.n)}</td>
+                              <td class="num app-num">{share(x.n, srcTotal)}</td>
+                            </tr>
+                          {/each}
+                        </tbody>
+                      </table>
+                    {:else if sendsSources(s.host)}
+                      <p class="mb-3 text-xs text-ink-3">За этот период входов нет.</p>
+                    {:else}
+                      <p class="mb-3 text-xs text-ink-3">Код счётчика на этом сайте ещё не передаёт источник. Обновите код Worker'а: «Как подключить счётчик к сайту» → «Копировать код Worker» → в Cloudflare Edit code → заменить всё → Deploy (ключ и маршруты не трогать).</p>
+                    {/if}
                     {#if pages.length}
                       <div class="mb-1 text-xs font-semibold text-ink-2">Страницы</div>
                       <table class="app-table mb-3 rounded border border-line bg-pane">
