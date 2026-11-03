@@ -58,3 +58,30 @@ it('netError — понятный текст', () => {
   expect(netError(e('', '58A2ACDF417F0000:error:0A000126:SSL routines'))).toContain('SSL/TLS');
   expect(netError(Object.assign(new Error('x'), { name: 'TimeoutError' }))).toContain('15 секунд');
 });
+
+describe('счётчик ошибок у пункта меню', () => {
+  it('смотрит только на последнюю проверку каждой страницы, как таблица', async () => {
+    const { mkdtempSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { openDb } = await import('../src/lib/server/db');
+    const { errorCount, listChecks } = await import('../src/lib/server/uptime');
+    const dir = mkdtempSync(join(tmpdir(), 'gsc-hub-'));
+    const db = openDb(join(dir, 'test.db'));
+    try {
+      const put = db.prepare('INSERT INTO uptime_checks (url, host, kind, level, data, since, checked_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
+      const data = JSON.stringify({ problems: [], ms: 100, status: 200, title: '', textLen: 0, similarity: null, finalUrl: '' });
+      // Старая страница заказа с ошибкой, потом сайт сменил адрес заказа — новая в порядке.
+      put.run('https://a.com/', 'a.com', 'home', 'ok', data, 1, 3000);
+      put.run('https://a.com/old-order/', 'a.com', 'order', 'error', data, 1, 1000);
+      put.run('https://a.com/order/', 'a.com', 'order', 'ok', data, 1, 2000);
+      put.run('https://b.com/', 'b.com', 'home', 'error', data, 1, 3000);
+      expect(listChecks(db).filter((c) => c.host === 'a.com').map((c) => c.url).sort()).toEqual(['https://a.com/', 'https://a.com/order/']);
+      expect(errorCount(db)).toBe(1);
+      expect(errorCount(db, new Set(['a.com']))).toBe(0);
+    } finally {
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

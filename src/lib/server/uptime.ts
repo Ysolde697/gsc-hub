@@ -201,10 +201,20 @@ export function findOrderPath(html: string, pageUrl: string): string | null {
 
 export interface StoredCheck { url: string; host: string; kind: 'home' | 'order'; level: Level; data: CheckData; since: number; checkedAt: number }
 
+/** Последняя проверка каждой страницы сайта (главная, заказ); старые адреса — не в счёт. */
 export function listChecks(db: Db): StoredCheck[] {
-  return (db.prepare('SELECT url, host, kind, level, data, since, checked_at FROM uptime_checks').all() as {
+  const rows = (db.prepare('SELECT url, host, kind, level, data, since, checked_at FROM uptime_checks ORDER BY checked_at DESC').all() as {
     url: string; host: string; kind: 'home' | 'order'; level: Level; data: string; since: number; checked_at: number;
-  }[]).map((r) => ({ url: r.url, host: r.host, kind: r.kind, level: r.level, data: JSON.parse(r.data), since: r.since, checkedAt: r.checked_at }));
+  }[]);
+  const seen = new Set<string>();
+  const out: StoredCheck[] = [];
+  for (const r of rows) {
+    const k = `${r.host}\n${r.kind}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push({ url: r.url, host: r.host, kind: r.kind, level: r.level, data: JSON.parse(r.data), since: r.since, checkedAt: r.checked_at });
+  }
+  return out;
 }
 
 export function history(db: Db, host: string, limit = 30): { url: string; level: Level; summary: string; at: number }[] {
@@ -295,11 +305,15 @@ export async function checkHost(db: Db, host: string, f: typeof fetch = fetch): 
   store(db, host, 'home', homeUrl, home.data, lvl(home.data));
 
   const orderPath = home.html ? findOrderPath(home.html, homeUrl) : null;
+  let orderUrl: string | null = null;
   if (orderPath) {
-    const orderUrl = `https://${host}${orderPath}`;
+    orderUrl = `https://${host}${orderPath}`;
     const order = await checkUrl(db, host, 'order', orderUrl, f);
     store(db, host, 'order', orderUrl, order.data, order.level);
   }
+  // Страница заказа сменилась или пропала: старая запись больше не про этот
+  // сайт. Иначе её давняя ошибка висела бы в счётчике у пункта меню.
+  db.prepare('DELETE FROM uptime_checks WHERE host = ? AND url != ? AND (? IS NULL OR url != ?)').run(host, homeUrl, orderUrl, orderUrl);
 }
 
 // ─── Расписание ──────────────────────────────────────────────────────────────
@@ -355,8 +369,8 @@ export function startUptimeMonitor(getDb: () => Db): void {
   setTimeout(() => void tick(), 60_000).unref();
 }
 
-/** Сколько сайтов сейчас с ошибкой — для пункта меню. */
+/** Сколько сайтов сейчас с ошибкой — для пункта меню; считает так же, как таблица. */
 export function errorCount(db: Db, hosts?: Set<string>): number {
-  const rows = db.prepare("SELECT DISTINCT host FROM uptime_checks WHERE level = 'error'").all() as { host: string }[];
-  return rows.filter((r) => !hosts || hosts.has(r.host)).length;
+  const bad = new Set(listChecks(db).filter((c) => c.level === 'error').map((c) => c.host));
+  return [...bad].filter((h) => !hosts || hosts.has(h)).length;
 }
