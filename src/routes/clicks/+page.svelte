@@ -111,7 +111,17 @@
   const pct = (v: number | null) => (v === null ? '—' : `${(v * 100).toFixed(1)}%`);
   const fmtDay = (iso: string) => iso.split('-').reverse().join('.');
   const periodLabel = $derived(data.period.startDate === data.period.endDate ? fmtDay(data.period.startDate) : `${fmtDay(data.period.startDate)} – ${fmtDay(data.period.endDate)}`);
-  const totals = $derived(sitesRaw.reduce((a, s) => ({ v: a.v + s.views, b: a.b + s.buttons, s: a.s + s.submits }), { v: 0, b: 0, s: 0 }));
+  // Итого по всем сайтам в таблице: суммы, а среднее время и доли — по всем вместе.
+  const totals = $derived(
+    sitesRaw.reduce(
+      (a, s) => ({ n: a.n + 1, impr: a.impr + s.impr, gsc: a.gsc + s.gsc, v: a.v + s.views, sec: a.sec + s.seconds, b: a.b + s.buttons, s: a.s + s.submits }),
+      { n: 0, impr: 0, gsc: 0, v: 0, sec: 0, b: 0, s: 0 }
+    )
+  );
+  const sitesWord = (n: number) => {
+    const d = n % 10, h = n % 100;
+    return d === 1 && h !== 11 ? 'сайт' : d >= 2 && d <= 4 && (h < 12 || h > 14) ? 'сайта' : 'сайтов';
+  };
 </script>
 
 <svelte:head><title>Кнопки · GSC Hub</title></svelte:head>
@@ -182,7 +192,7 @@
       <h1 class="text-base font-semibold">Кнопки</h1>
       <PeriodNote start={data.period.startDate} end={data.period.endDate} />
       <span class="text-xs text-ink-3">{periodLabel}</span>
-      <span class="text-xs text-ink-3">· просмотров {fmt(totals.v)} · других кнопок {fmt(totals.b)} · перешли к оплате {fmt(totals.s)}</span>
+      <span class="text-xs text-ink-3">· {fmt(totals.n)} {sitesWord(totals.n)} · показов в Google {fmt(totals.impr)} · кликов из Google {fmt(totals.gsc)} · просмотров {fmt(totals.v)} · других кнопок {fmt(totals.b)} · перешли к оплате {fmt(totals.s)}</span>
       <label class="ml-auto flex items-center gap-1 text-xs text-ink-2"><input type="checkbox" bind:checked={withLinks} /> показывать и обычные ссылки</label>
     </div>
 
@@ -213,6 +223,17 @@
               <SortTh {sort} k="rateButton" label="% от просмотров" num title="Другие кнопки / просмотры страниц" />
               <SortTh {sort} k="submits" label="Перешли к оплате" num title="Нажали кнопку заказа («Continue to checkout», «Afrekenen»…) и реально ушли на оплату / к партнёру. Если сайт не пустил (например, сумма мала) — не считается" />
               <SortTh {sort} k="rateSubmit" label="% от просмотров" num title="Перешли к оплате / просмотры страниц" />
+            </tr>
+            <tr class="bg-sunk font-semibold text-ink" title="Сумма по всем сайтам в таблице; среднее время и доли — по всем сайтам вместе">
+              <td class="whitespace-nowrap">Итого: {fmt(totals.n)} {sitesWord(totals.n)}</td>
+              <td class="num app-num">{fmt(totals.impr)}</td>
+              <td class="num app-num">{fmt(totals.gsc)}</td>
+              <td class="num app-num">{fmt(totals.v)}</td>
+              <td class="num app-num">{dur(totals.v ? totals.sec / totals.v : null)}</td>
+              <td class="num app-num">{fmt(totals.b)}</td>
+              <td class="num app-num">{pct(totals.v ? totals.b / totals.v : null)}</td>
+              <td class="num app-num">{fmt(totals.s)}</td>
+              <td class="num app-num">{pct(totals.v ? totals.s / totals.v : null)}</td>
             </tr>
           </thead>
           <tbody>
