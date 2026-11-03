@@ -259,62 +259,86 @@ export async function searchAnalyticsQuery(
   body: SearchAnalyticsBody
 ): Promise<SearchAnalyticsRow[]> {
   // «Сегодня»: суточных цифр за текущий день Google долго не отдаёт, а почасовые
-  // уже есть — их показывает Search Console в режиме «24 часа». Берём их; если
-  // Google почасовые не дал — как раньше, суточные.
-  if (isTodayTotals(body)) {
-    const hourly = await todayFromHourly(db, acc, siteUrl, body.startDate).catch(() => null);
+  // уже есть — их показывает Search Console в режиме «24 часа». Берём их и для
+  // итогов, и для ключей/страниц, чтобы цифры сходились; если Google почасовые
+  // не дал — как раньше, суточные.
+  if (isTodayQuery(body)) {
+    const hourly = await todayFromHourly(db, acc, siteUrl, body).catch(() => null);
     if (hourly && hourly.length) return hourly;
   }
   return dailyQuery(db, acc, siteUrl, body);
 }
 
-/** Итог за сегодняшний день по Германии — запрос «по дате» ровно за этот день. */
-function isTodayTotals(body: SearchAnalyticsBody): boolean {
+// Что можно собрать из почасовых данных: дата и обычные разрезы.
+const HOURLY_DIMS = new Set(['date', 'query', 'page', 'country', 'device']);
+
+/** Запрос ровно за сегодняшний день по Германии, без фильтров и без продолжения страниц. */
+function isTodayQuery(body: SearchAnalyticsBody): boolean {
   return (
-    body.dimensions.length === 1 &&
-    body.dimensions[0] === 'date' &&
+    body.dimensions.length > 0 &&
+    body.dimensions.every((d) => HOURLY_DIMS.has(d)) &&
     body.startDate === body.endDate &&
     body.startDate === localToday() &&
     !body.dimensionFilterGroups?.length &&
+    !body.startRow &&
     (body.dataState ?? 'all') === 'all'
   );
 }
 
-// Если Google отверг почасовой запрос (400), консоль какое-то время его не
-// повторяет, чтобы не удваивать число запросов.
+// Если Google отверг почасовой запрос (400), этот разрез какое-то время не
+// повторяем, чтобы не удваивать число запросов. Ключ — консоль + разрез.
 const hourlyRejected = new Map<string, number>();
 const HOURLY_RETRY_MS = 10 * 60 * 1000;
 
 /**
- * Сумма почасовых данных Google за день `day` по времени Германии (как «24 часа»
- * в Search Console). Час Google помечает моментом с часовым поясом; день по
- * Германии начинается накануне по Калифорнии, поэтому спрашиваем два дня.
+ * Почасовые данные Google за день по времени Германии (как «24 часа» в Search
+ * Console), сложенные по остальным разрезам запроса. Час Google помечает
+ * моментом с часовым поясом; день по Германии начинается накануне по
+ * Калифорнии, поэтому спрашиваем два дня.
  */
-async function todayFromHourly(db: Db, acc: AccountRow, siteUrl: string, day: string): Promise<SearchAnalyticsRow[]> {
-  if ((hourlyRejected.get(acc.id) ?? 0) > Date.now()) return [];
+async function todayFromHourly(db: Db, acc: AccountRow, siteUrl: string, body: SearchAnalyticsBody): Promise<SearchAnalyticsRow[]> {
+  const day = body.startDate;
+  const rest = body.dimensions.filter((d) => d !== 'date');
+  const rejectKey = `${acc.id}:${rest.join(',')}`;
+  if ((hourlyRejected.get(rejectKey) ?? 0) > Date.now()) return [];
   let rows: SearchAnalyticsRow[];
   try {
     rows = await dailyQuery(db, acc, siteUrl, {
       startDate: addCalendarDays(day, -1),
       endDate: day,
-      dimensions: ['HOUR'],
+      dimensions: ['HOUR', ...rest],
       dataState: 'HOURLY_ALL',
-      rowLimit: 200
+      rowLimit: rest.length ? 25000 : 200
     });
   } catch (e) {
-    if (/searchAnalytics 400/.test((e as Error).message)) hourlyRejected.set(acc.id, Date.now() + HOURLY_RETRY_MS);
+    if (/searchAnalytics 400/.test((e as Error).message)) hourlyRejected.set(rejectKey, Date.now() + HOURLY_RETRY_MS);
     throw e;
   }
-  let clicks = 0, impressions = 0, posSum = 0;
+  const groups = new Map<string, { other: string[]; clicks: number; impressions: number; posSum: number }>();
   for (const r of rows) {
     const at = hourInstant(r.keys[0] ?? '');
     if (at === null || localToday(at) !== day) continue;
-    clicks += r.clicks;
-    impressions += r.impressions;
-    posSum += r.position * r.impressions;
+    const other = r.keys.slice(1);
+    const k = JSON.stringify(other);
+    const g = groups.get(k) ?? groups.set(k, { other, clicks: 0, impressions: 0, posSum: 0 }).get(k)!;
+    g.clicks += r.clicks;
+    g.impressions += r.impressions;
+    g.posSum += r.position * r.impressions;
   }
-  if (!clicks && !impressions) return [];
-  return [{ keys: [day], clicks, impressions, ctr: impressions ? clicks / impressions : 0, position: impressions ? posSum / impressions : 0 }];
+  const out = [...groups.values()]
+    .filter((g) => g.clicks || g.impressions)
+    .map((g): SearchAnalyticsRow => {
+      let i = 0;
+      return {
+        keys: body.dimensions.map((d) => (d === 'date' ? day : (g.other[i++] ?? ''))),
+        clicks: g.clicks,
+        impressions: g.impressions,
+        ctr: g.impressions ? g.clicks / g.impressions : 0,
+        position: g.impressions ? g.posSum / g.impressions : 0
+      };
+    })
+    .sort((a, b) => b.clicks - a.clicks || b.impressions - a.impressions);
+  return out.slice(0, body.rowLimit ?? 1000);
 }
 
 const laHour = new Intl.DateTimeFormat('en-CA', {

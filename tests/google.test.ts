@@ -472,6 +472,61 @@ describe('google.searchAnalyticsQuery', () => {
     }
   });
 
+  it('«Сегодня» keywords come from hourly data too, summed per query and page', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-11-03T07:00:00Z')); // 08:00 в Германии
+      upsertAccount(db, {
+        id: 'h3', email: 'h3@x', access_token: 't1', refresh_token: 'r', expires_at: Math.floor(Date.now() / 1000) + 7200, scope: 's'
+      });
+      const bodies: Record<string, unknown>[] = [];
+      vi.stubGlobal('fetch', vi.fn(async (_u: string, init?: RequestInit) => {
+        const b = JSON.parse(String(init?.body));
+        bodies.push(b);
+        if (b.dataState !== 'HOURLY_ALL') return new Response(JSON.stringify({ rows: [] }), { status: 200 });
+        return new Response(JSON.stringify({ rows: [
+          { keys: ['2026-11-02T13:00:00-08:00', 'fc coins', 'https://s.example/'], clicks: 5, impressions: 5, ctr: 1, position: 1 }, // 22:00 2.11 — вчера
+          { keys: ['2026-11-02T16:00:00-08:00', 'fc coins', 'https://s.example/'], clicks: 1, impressions: 10, ctr: 0.1, position: 4 },
+          { keys: ['2026-11-02T18:00:00-08:00', 'fc coins', 'https://s.example/'], clicks: 2, impressions: 30, ctr: 0.07, position: 8 },
+          { keys: ['2026-11-02T18:00:00-08:00', 'buy coins', 'https://s.example/buy/'], clicks: 0, impressions: 7, ctr: 0, position: 20 }
+        ] }), { status: 200 });
+      }));
+      const rows = await searchAnalyticsQuery(db, getAccount(db, 'h3')!, 'https://kw-hourly.example/', {
+        startDate: '2026-11-03', endDate: '2026-11-03', dimensions: ['query', 'page'], rowLimit: 25000
+      });
+      expect(bodies[0]).toMatchObject({ dataState: 'HOURLY_ALL', dimensions: ['HOUR', 'query', 'page'] });
+      expect(rows).toEqual([
+        { keys: ['fc coins', 'https://s.example/'], clicks: 3, impressions: 40, ctr: 3 / 40, position: 7 },
+        { keys: ['buy coins', 'https://s.example/buy/'], clicks: 0, impressions: 7, ctr: 0, position: 20 }
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a rejected hourly keyword request does not switch off hourly totals', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-11-03T12:00:00Z'));
+      upsertAccount(db, {
+        id: 'h4', email: 'h4@x', access_token: 't1', refresh_token: 'r', expires_at: Math.floor(Date.now() / 1000) + 7200, scope: 's'
+      });
+      vi.stubGlobal('fetch', vi.fn(async (_u: string, init?: RequestInit) => {
+        const b = JSON.parse(String(init?.body));
+        if (b.dataState === 'HOURLY_ALL' && b.dimensions.length > 1) return new Response('bad request', { status: 400 });
+        if (b.dataState === 'HOURLY_ALL') return new Response(JSON.stringify({ rows: [{ keys: ['2026-11-03T02:00:00-08:00'], clicks: 2, impressions: 20, ctr: 0.1, position: 5 }] }), { status: 200 });
+        return new Response(JSON.stringify({ rows: [] }), { status: 200 });
+      }));
+      const acc = getAccount(db, 'h4')!;
+      const kw = await searchAnalyticsQuery(db, acc, 'https://reject-kw.example/', { startDate: '2026-11-03', endDate: '2026-11-03', dimensions: ['query'] });
+      expect(kw).toEqual([]);
+      const totals = await searchAnalyticsQuery(db, acc, 'https://reject-kw.example/', { startDate: '2026-11-03', endDate: '2026-11-03', dimensions: ['date'] });
+      expect(totals[0]).toMatchObject({ keys: ['2026-11-03'], clicks: 2, impressions: 20 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('reads Google hour keys with or without a time zone', () => {
     expect(hourInstant('2026-11-01T05:00:00-08:00')).toBe(Date.parse('2026-11-01T13:00:00Z'));
     expect(hourInstant('2026-10-31T16:00:00')).toBe(Date.parse('2026-10-31T23:00:00Z'));

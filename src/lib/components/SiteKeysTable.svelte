@@ -89,8 +89,10 @@
   const totals = $derived(filtered.reduce((a, r) => ({ impressions: a.impressions + r.impressions, clicks: a.clicks + r.clicks }), { impressions: 0, clicks: 0 }));
   // Google не показывает редкие («анонимные») запросы: их клики и показы есть
   // в итоге сайта, но не в списке ключей. Показываем разницу, чтобы цифры сходились.
+  // «Сегодня»: итог сайта есть (почасовые данные), а ключей Google ещё не отдал.
+  const todayNoKeys = $derived(period === 'today' && !loading && !err && rows.length === 0 && !!siteTotals && (siteTotals.clicks > 0 || siteTotals.impressions > 0));
   const hidden = $derived.by(() => {
-    if (!siteTotals || loading || err) return null;
+    if (!siteTotals || loading || err || todayNoKeys) return null;
     const all = rows.reduce((a, r) => ({ impressions: a.impressions + r.impressions, clicks: a.clicks + r.clicks }), { impressions: 0, clicks: 0 });
     const c = Math.max(0, siteTotals.clicks - all.clicks), i = Math.max(0, siteTotals.impressions - all.impressions);
     return c || i ? { clicks: c, impressions: i } : null;
@@ -132,6 +134,8 @@
     <p class="loading text-xs">Загружаю ключи…</p>
   {:else if err}
     <p class="text-xs text-bad">Не загрузилось: {err} <button type="button" class="btn btn-ghost btn-sm" onclick={load}>Повторить</button></p>
+  {:else if todayNoKeys}
+    <p class="notice notice-warn text-xs">Ключи за сегодня Google пока не отдаёт. Итог сайта ({fmt(siteTotals?.clicks ?? 0)} кликов · {fmt(siteTotals?.impressions ?? 0)} показов) — из почасовых данных, как «24 часа» в Search Console; по каким ключам они пришли, Google покажет позже. Выберите в шапке «Вчера», чтобы увидеть ключи за прошлый день.</p>
   {:else if shown.length === 0}
     <p class="text-xs text-ink-3">Нет ключей за этот период{search || kind !== 'all' ? ' с этим фильтром' : ''}.</p>
   {:else}

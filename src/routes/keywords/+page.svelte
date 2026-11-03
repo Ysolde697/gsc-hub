@@ -47,7 +47,7 @@
       <h1 class="text-base font-semibold">Ключи сайтов</h1>
       <PeriodNote start={data.period.startDate} end={data.period.endDate} />
       <span class="text-xs text-ink-3">{periodLabel}{data.period.key === 'today' || data.period.key === 'yesterday' ? ' · данные за день ещё обновляются' : ''}</span>
-      {#if data.period.pending}<span class="text-xs text-warn">Google ещё не начал этот день{data.period.startsAt ? ` — начнёт в ${data.period.startsAt}` : ''}</span>{/if}
+      {#if data.period.pending}<span class="text-xs text-warn" title="Сутки Google идут по Калифорнии. Итоги за «Сегодня» хаб берёт из почасовых данных — они есть и до этого">Суточный отчёт Google за этот день начнётся{data.period.startsAt ? ` в ${data.period.startsAt}` : ''}; итоги — из почасовых данных</span>{/if}
     </div>
     <div class="flex flex-wrap items-center gap-3 border-b border-line px-3 py-2 text-xs">
       <input class="input h-7 w-56 text-xs" placeholder="Сайт содержит…" bind:value={search} aria-label="Поиск сайта" />
