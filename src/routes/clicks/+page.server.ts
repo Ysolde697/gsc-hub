@@ -9,6 +9,7 @@ import { clicksForRange, lastSeen, normHost, timeForRange, workerScript } from '
 import { siteHostname } from '$lib/utils/url-filters';
 import { listAllKnownSites } from '$lib/server/google';
 import { activeGroupHosts } from '$lib/server/site-groups';
+import { bingConfigured, bingTotals, getBing } from '$lib/server/bing';
 
 export const load: PageServerLoad = async ({ locals, url }) => {
   requireAdmin(locals);
@@ -59,6 +60,22 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     for (const h of missing) if (!anywhere.has(h)) noConsole.push(h);
     for (const h of noConsole) hosts.add(h);
   }
+  // Bing за тот же период. Холодный старт Bing долгий (сотня запросов) — страницу
+  // не держим дольше 3 секунд: тогда колонки покажут «загружается», а следующая
+  // загрузка возьмёт готовое.
+  const bingOn = bingConfigured();
+  let bingState: 'off' | 'loading' | 'ok' = bingOn ? 'loading' : 'off';
+  const bing: Record<string, { clicks: number; impressions: number }> = {};
+  let bingLatest: string | null = null;
+  if (bingOn) {
+    const data = await Promise.race([getBing().catch(() => null), new Promise<null>((r) => setTimeout(() => r(null), 3000))]);
+    if (data && data.daily.size) {
+      const t = bingTotals(data, period.startDate, period.endDate);
+      bingLatest = t.latest;
+      for (const [h, v] of t.byHost) if (hosts.has(h)) bing[h] = v;
+      bingState = 'ok';
+    }
+  }
   const mine = (h: string) => hosts.has(h);
   const seen = Object.fromEntries(Object.entries(lastSeen(db())).filter(([h]) => mine(h)));
   return {
@@ -67,7 +84,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     clicks: clicks.filter((r) => mine(r.host)),
     time: time.filter((t) => mine(t.host)),
     gsc,
-    gscImpr, gscErr, noConsole, lastSeen: seen, errors, workerCode: workerScript(url.origin), counterKey: ensureCounterKey(db()), keys: listCounterKeys(db()) };
+    gscImpr, gscErr, noConsole, bing, bingState, bingLatest, lastSeen: seen, errors, workerCode: workerScript(url.origin), counterKey: ensureCounterKey(db()), keys: listCounterKeys(db()) };
 };
 
 export const actions: Actions = {

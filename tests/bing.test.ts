@@ -29,3 +29,17 @@ describe('bing rows', () => {
     expect(bingCacheKey(28)).not.toBe(bingCacheKey(7));
   });
 });
+
+describe('bingTotals', () => {
+  it('sums the period per domain and reports the last day Bing has', async () => {
+    const { bingTotals } = await import('../src/lib/server/bing');
+    const daily = new Map([
+      ['fccoins.de', [{ day: '2026-10-31', clicks: 1, impressions: 10 }, { day: '2026-11-01', clicks: 2, impressions: 20 }]],
+      ['fc-27.com', [{ day: '2026-11-01', clicks: 5, impressions: 50 }]]
+    ]);
+    const t = bingTotals({ traffic: new Map(), queries: [], daily }, '2026-11-01', '2026-11-03');
+    expect(t.latest).toBe('2026-11-01');
+    expect(t.byHost.get('fccoins.de')).toEqual({ clicks: 2, impressions: 20 });
+    expect(t.byHost.get('fc-27.com')).toEqual({ clicks: 5, impressions: 50 });
+  });
+});

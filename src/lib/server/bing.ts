@@ -43,9 +43,40 @@ export interface BingQuery {
   position: number;
 }
 
+export interface BingDay {
+  day: string;
+  clicks: number;
+  impressions: number;
+}
+
 export interface BingData {
   traffic: Map<string, BingTraffic>; // host -> recent site-total clicks/impressions
   queries: BingQuery[]; // top queries per site
+  /** Домен без www → клики и показы по дням (как их отдаёт Bing, с опозданием в 1–3 дня). */
+  daily: Map<string, BingDay[]>;
+}
+
+/** Ключ Bing Webmaster задан на сервере хаба. */
+export function bingConfigured(): boolean {
+  return !!privateEnv.BING_API_KEY;
+}
+
+/** Итоги Bing по доменам за даты [start, end] и последний день, за который у Bing есть данные. */
+export function bingTotals(data: BingData, startDate: string, endDate: string): { byHost: Map<string, BingTraffic>; latest: string | null } {
+  const byHost = new Map<string, BingTraffic>();
+  let latest: string | null = null;
+  for (const [host, days] of data.daily) {
+    let clicks = 0;
+    let impressions = 0;
+    for (const d of days) {
+      if (!latest || d.day > latest) latest = d.day;
+      if (d.day < startDate || d.day > endDate) continue;
+      clicks += d.clicks;
+      impressions += d.impressions;
+    }
+    byHost.set(host, { clicks, impressions });
+  }
+  return { byHost, latest };
 }
 
 /** `/Date(1755993600000)/` → `2025-08-24`. Не разобралось — null, без догадок. */
@@ -113,23 +144,32 @@ async function mapPool<T>(items: T[], limit: number, fn: (item: T) => Promise<vo
 async function refreshBing(perSiteLimit = 200): Promise<BingData> {
   const traffic = new Map<string, BingTraffic>();
   const queries: BingQuery[] = [];
+  const daily = new Map<string, BingDay[]>();
   let verified: { host: string; url: string }[];
   try {
     const sites = await bingGet<{ Url: string }[]>('GetUserSites');
     verified = (sites ?? []).map((s) => ({ host: new URL(s.Url).host, url: s.Url }));
   } catch {
-    return { traffic, queries };
+    return { traffic, queries, daily };
   }
   await mapPool(verified, 4, async ({ host, url }) => {
     try {
-      const rows = await bingGet<{ Impressions: number; Clicks: number }[]>('GetRankAndTrafficStats', { siteUrl: url });
+      const rows = await bingGet<{ Date: string; Impressions: number; Clicks: number }[]>('GetRankAndTrafficStats', { siteUrl: url });
       let clicks = 0;
       let impressions = 0;
+      const days = new Map<string, BingDay>();
       for (const r of rows ?? []) {
         clicks += r.Clicks || 0;
         impressions += r.Impressions || 0;
+        const day = parseBingDate(r.Date);
+        if (!day) continue;
+        const d = days.get(day) ?? days.set(day, { day, clicks: 0, impressions: 0 }).get(day)!;
+        d.clicks += r.Clicks || 0;
+        d.impressions += r.Impressions || 0;
       }
       traffic.set(host, { clicks, impressions });
+      const bare = host.toLowerCase().replace(/^www\./, '');
+      daily.set(bare, [...(daily.get(bare) ?? []), ...days.values()]);
     } catch {
       // skip traffic for this site
     }
@@ -157,7 +197,7 @@ async function refreshBing(perSiteLimit = 200): Promise<BingData> {
       // skip queries for this site
     }
   });
-  return { traffic, queries };
+  return { traffic, queries, daily };
 }
 
 // Bing throttles aggressively (ErrorCode 4 "ThrottleUser"), so the ~100-call
@@ -168,7 +208,7 @@ async function refreshBing(perSiteLimit = 200): Promise<BingData> {
 // window), so tens-of-minutes staleness is fine.
 const BING_TTL_MS = 30 * 60 * 1000;
 const BING_FAIL_TTL_MS = 2 * 60 * 1000;
-const EMPTY_BING: BingData = { traffic: new Map(), queries: [] };
+const EMPTY_BING: BingData = { traffic: new Map(), queries: [], daily: new Map() };
 let bingCache: { at: number; ttl: number; data: BingData } | null = null;
 let bingInflight: Promise<BingData> | null = null;
 

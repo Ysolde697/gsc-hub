@@ -56,10 +56,18 @@
     open = n;
   };
 
-  type Site = { host: string; impr: number; gsc: number; views: number; seconds: number; avg: number | null; buttons: number; submits: number; rateSubmit: number | null; rateButton: number | null };
+  // Bing: данные за период, если Bing уже отдал этот период (он опаздывает на 1–3 дня).
+  const bingCovers = $derived(data.bingState === 'ok' && !!data.bingLatest && data.period.startDate <= data.bingLatest);
+  const bingOf = (h: string) => (bingCovers ? (data.bing[h] ?? null) : null);
+  const bingWhy = (h: string) =>
+    data.bingState === 'off' ? 'Bing не подключён: на сервере хаба не задан ключ BING_API_KEY (Bing Webmaster → Settings → API access)'
+    : data.bingState === 'loading' ? 'Данные Bing загружаются — обновите страницу через минуту'
+    : !bingCovers ? `Bing отдаёт данные с опозданием на 1–3 дня; последний день у Bing — ${data.bingLatest ? fmtDay(data.bingLatest) : '—'}`
+    : !data.bing[h] ? 'Сайта нет в Bing Webmaster' : '';
+  type Site = { host: string; impr: number; gsc: number; bImpr: number | null; bClicks: number | null; views: number; seconds: number; avg: number | null; buttons: number; submits: number; rateSubmit: number | null; rateButton: number | null };
   const sitesRaw = $derived.by(() => {
     const m = new Map<string, Site>();
-    const get = (h: string) => m.get(h) ?? (m.set(h, { host: h, impr: data.gscImpr[h] ?? 0, gsc: data.gsc[h] ?? 0, views: 0, seconds: 0, avg: null, buttons: 0, submits: 0, rateSubmit: null, rateButton: null }), m.get(h)!);
+    const get = (h: string) => m.get(h) ?? (m.set(h, { host: h, impr: data.gscImpr[h] ?? 0, gsc: data.gsc[h] ?? 0, bImpr: bingOf(h)?.impressions ?? null, bClicks: bingOf(h)?.clicks ?? null, views: 0, seconds: 0, avg: null, buttons: 0, submits: 0, rateSubmit: null, rateButton: null }), m.get(h)!);
     for (const r of data.clicks) {
       const s = get(r.host);
       if (r.kind === 'view') s.views += r.n;
@@ -75,8 +83,8 @@
     }
     return [...m.values()];
   });
-  type K = 'host' | 'impr' | 'gsc' | 'views' | 'avg' | 'buttons' | 'submits' | 'rateButton' | 'rateSubmit';
-  const sort = new TableSort<K>('submits', -1, ['impr', 'gsc', 'views', 'avg', 'buttons', 'submits', 'rateButton', 'rateSubmit']);
+  type K = 'host' | 'impr' | 'gsc' | 'bImpr' | 'bClicks' | 'views' | 'avg' | 'buttons' | 'submits' | 'rateButton' | 'rateSubmit';
+  const sort = new TableSort<K>('submits', -1, ['impr', 'gsc', 'bImpr', 'bClicks', 'views', 'avg', 'buttons', 'submits', 'rateButton', 'rateSubmit']);
   const sites = $derived(sort.apply(sitesRaw, (s, k) => s[k]));
 
   type DK = 'label' | 'kind' | 'page' | 'target' | 'n';
@@ -114,8 +122,8 @@
   // Итого по всем сайтам в таблице: суммы, а среднее время и доли — по всем вместе.
   const totals = $derived(
     sitesRaw.reduce(
-      (a, s) => ({ n: a.n + 1, impr: a.impr + s.impr, gsc: a.gsc + s.gsc, v: a.v + s.views, sec: a.sec + s.seconds, b: a.b + s.buttons, s: a.s + s.submits }),
-      { n: 0, impr: 0, gsc: 0, v: 0, sec: 0, b: 0, s: 0 }
+      (a, s) => ({ n: a.n + 1, impr: a.impr + s.impr, gsc: a.gsc + s.gsc, bImpr: a.bImpr + (s.bImpr ?? 0), bClicks: a.bClicks + (s.bClicks ?? 0), v: a.v + s.views, sec: a.sec + s.seconds, b: a.b + s.buttons, s: a.s + s.submits }),
+      { n: 0, impr: 0, gsc: 0, bImpr: 0, bClicks: 0, v: 0, sec: 0, b: 0, s: 0 }
     )
   );
   const sitesWord = (n: number) => {
@@ -192,7 +200,8 @@
       <h1 class="text-base font-semibold">Кнопки</h1>
       <PeriodNote start={data.period.startDate} end={data.period.endDate} />
       <span class="text-xs text-ink-3">{periodLabel}</span>
-      <span class="text-xs text-ink-3">· {fmt(totals.n)} {sitesWord(totals.n)} · показов в Google {fmt(totals.impr)} · кликов из Google {fmt(totals.gsc)} · просмотров {fmt(totals.v)} · других кнопок {fmt(totals.b)} · перешли к оплате {fmt(totals.s)}</span>
+      <span class="text-xs text-ink-3">· {fmt(totals.n)} {sitesWord(totals.n)} · показов в Google {fmt(totals.impr)} · кликов из Google {fmt(totals.gsc)}{bingCovers ? ` · кликов из Bing ${fmt(totals.bClicks)}` : ''} · просмотров {fmt(totals.v)} · других кнопок {fmt(totals.b)} · перешли к оплате {fmt(totals.s)}</span>
+      {#if data.bingState === 'off'}<span class="text-xs text-ink-3" title={bingWhy('')}>· Bing не подключён</span>{:else if data.bingState === 'loading'}<span class="text-xs text-ink-3">· Bing загружается</span>{:else if data.bingLatest && data.period.endDate > data.bingLatest}<span class="text-xs text-ink-3" title="Bing выкладывает данные с опозданием на 1–3 дня">· Bing — данные по {fmtDay(data.bingLatest)}</span>{/if}
       <label class="ml-auto flex items-center gap-1 text-xs text-ink-2"><input type="checkbox" bind:checked={withLinks} /> показывать и обычные ссылки</label>
     </div>
 
@@ -217,6 +226,8 @@
               <SortTh {sort} k="host" label="Сайт" />
               <SortTh {sort} k="impr" label="Показы в Google" num title="Search Console за тот же период: сколько раз сайт показали в поиске" />
               <SortTh {sort} k="gsc" label="Клики из Google" num title="Search Console за тот же период" />
+              <SortTh {sort} k="bImpr" label="Показы в Bing" num title="Bing Webmaster за тот же период (Bing выкладывает данные с опозданием на 1–3 дня)" />
+              <SortTh {sort} k="bClicks" label="Клики из Bing" num title="Bing Webmaster за тот же период (Bing выкладывает данные с опозданием на 1–3 дня)" />
               <SortTh {sort} k="views" label="Просмотры страниц" num title="Сколько раз открыли страницы сайта (счётчик; считается с момента обновления скрипта)" />
               <SortTh {sort} k="avg" label="Среднее время" num title="Сколько в среднем страница была открыта на экране (свёрнутая вкладка не считается)" />
               <SortTh {sort} k="buttons" label="Другие кнопки" num title="Нажатия кнопок и ссылок, после которых заказа ещё нет: «Order coins» в шапке, ссылки на другие сайты" />
@@ -228,6 +239,8 @@
               <td class="whitespace-nowrap">Итого: {fmt(totals.n)} {sitesWord(totals.n)}</td>
               <td class="num app-num">{fmt(totals.impr)}</td>
               <td class="num app-num">{fmt(totals.gsc)}</td>
+              <td class="num app-num" title={bingCovers ? '' : bingWhy('')}>{bingCovers ? fmt(totals.bImpr) : '—'}</td>
+              <td class="num app-num" title={bingCovers ? '' : bingWhy('')}>{bingCovers ? fmt(totals.bClicks) : '—'}</td>
               <td class="num app-num">{fmt(totals.v)}</td>
               <td class="num app-num">{dur(totals.v ? totals.sec / totals.v : null)}</td>
               <td class="num app-num">{fmt(totals.b)}</td>
@@ -253,6 +266,8 @@
                   <td class="num app-num">{data.noConsole.includes(s.host) ? '—' : fmt(s.impr)}</td>
                   <td class="num app-num">{data.noConsole.includes(s.host) ? '—' : fmt(s.gsc)}</td>
                 {/if}
+                <td class="num app-num" title={s.bImpr === null ? bingWhy(s.host) : ''}>{s.bImpr === null ? '—' : fmt(s.bImpr)}</td>
+                <td class="num app-num" title={s.bClicks === null ? bingWhy(s.host) : ''}>{s.bClicks === null ? '—' : fmt(s.bClicks)}</td>
                 <td class="num app-num">{fmt(s.views)}</td>
                 <td class="num app-num">{dur(s.avg)}</td>
                 <td class="num app-num">{fmt(s.buttons)}</td>
@@ -266,7 +281,7 @@
                 {@const srcs = sourcesOf(data.clicks.filter((r) => r.host === s.host))}
                 {@const srcTotal = srcs.reduce((a, x) => a + x.n, 0)}
                 <tr class="bg-sunk hover:bg-sunk">
-                  <td colspan="9" class="px-3 py-2">
+                  <td colspan="11" class="px-3 py-2">
                     <div class="mb-1 text-xs font-semibold text-ink-2">Откуда пришли <span class="font-normal text-ink-3">— входы на сайт; переходы внутри сайта не считаются</span></div>
                     {#if srcs.length}
                       <table class="app-table mb-3 rounded border border-line bg-pane">
