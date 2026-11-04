@@ -10,15 +10,21 @@ All notable changes to this project are documented here. Format loosely follows
 ### Changed
 - **Every site gets its own counter file.** The Worker used to serve the same
   `/_e.js` to every site. Now the file and event paths, the names inside, the
-  field names and the code order differ per site: the Worker derives them from
-  the site's hostname and the `COUNTER_KEY` secret. Without the key, the files of
-  different sites cannot be linked. The page code no longer carries Cyrillic text
-  or the button word list — the panel decides what counts as a button.
+  field names and the code order differ per site: the panel derives them from
+  the site's hostname and the counter key. Without the key, the files of
+  different sites cannot be linked. The page code no longer carries Cyrillic
+  text or the button word list — the panel decides what counts as a button.
+- **The Worker code is installed once.** The Worker fetches the counter file
+  from the panel (`/c/site`, key required) and refreshes it every 10 minutes; it
+  forwards page events as they are and the panel decodes them. Future counter
+  changes reach the sites on their own. If the panel is down, the site works as
+  usual, just without counting; a page never waits for the panel longer than a
+  second.
 
 ### How to update
-Copy the new Worker code ("Кнопки" → "Как подключить счётчик") into the Worker of
-every site. The key and routes stay the same. Until a site's Worker is updated,
-the old counter keeps counting.
+One last time, copy the Worker code ("Кнопки" → "Как подключить счётчик") into
+the Worker of every site → Deploy. The key and routes stay the same. Until a
+site's Worker is updated, the old counter keeps counting.
 
 ## [0.9.3] - 2026-10-27
 

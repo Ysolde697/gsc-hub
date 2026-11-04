@@ -226,127 +226,208 @@ const COUNTER_TAIL = '})();';
 
 const tokenList = (re: RegExp) => [...new Set([...[COUNTER_HEAD, ...COUNTER_BLOCKS].join('').matchAll(re)].map((m) => m[1]))];
 
-/** Заготовка целиком — в таком виде она уходит и в код Worker. */
-export const COUNTER_TEMPLATE = {
-  head: COUNTER_HEAD,
-  blocks: COUNTER_BLOCKS,
-  tail: COUNTER_TAIL,
-  ids: tokenList(/@([A-Za-z]+)@/g),
-  fields: tokenList(/#([a-z]+)#/g),
-  kinds: tokenList(/\$([a-z]+)\$/g)
-};
+const COUNTER_IDS = tokenList(/@([A-Za-z]+)@/g);
+const COUNTER_FIELDS = tokenList(/#([a-z]+)#/g);
+const COUNTER_KINDS = tokenList(/\$([a-z]+)\$/g);
 
-/**
- * Сборка варианта счётчика — обычный JavaScript, один и тот же текст работает в
- * панели и в Cloudflare Worker (вставляется в его код как есть). Вариант
- * выводится из 32 байт (SHA-256 от ключа и сайта): свой адрес файла и событий,
- * свои имена, названия полей, виды событий и порядок блоков.
- */
-const VARIANT_SRC = String.raw`function counterRng(x) {
-  var w = function (i) { return ((x[i] << 24) | (x[i + 1] << 16) | (x[i + 2] << 8) | x[i + 3]) >>> 0; };
-  var a = w(0), b = w(4), c = w(8), d = w(12);
-  var next = function () {
+/** Случайные числа от 16 байт (sfc32): у одного сайта — всегда одна и та же последовательность. */
+function counterRng(x: Uint8Array): () => number {
+  const w = (i: number) => ((x[i] << 24) | (x[i + 1] << 16) | (x[i + 2] << 8) | x[i + 3]) >>> 0;
+  let a = w(0), b = w(4), c = w(8), d = w(12);
+  const next = () => {
     a |= 0; b |= 0; c |= 0; d |= 0;
-    var t = (((a + b) | 0) + d) | 0;
-    d = (d + 1) | 0; a = b ^ (b >>> 9); b = (c + (c << 3)) | 0; c = (c << 21) | (c >>> 11); c = (c + t) | 0;
+    const t = (((a + b) | 0) + d) | 0;
+    d = (d + 1) | 0;
+    a = b ^ (b >>> 9);
+    b = (c + (c << 3)) | 0;
+    c = (c << 21) | (c >>> 11);
+    c = (c + t) | 0;
     return (t >>> 0) / 4294967296;
   };
-  for (var i = 0; i < 15; i++) next();
+  for (let i = 0; i < 15; i++) next();
   return next;
 }
-function buildCounter(tpl, m) {
-  var blocks = m.order ? m.order.map(function (i) { return tpl.blocks[i]; }) : tpl.blocks;
-  return (tpl.head + blocks.join('') + tpl.tail)
-    .replace(/@([A-Za-z]+)@/g, function (_, n) { return m.ids[n] || n; })
-    .replace(/#([a-z]+)#/g, function (_, n) { return m.fields[n] || n; })
-    .replace(/\$([a-z]+)\$/g, function (_, n) { return JSON.stringify(m.kinds[n] || n); })
-    .replace(/%EV%/g, function () { return JSON.stringify(m.events); })
-    .replace(/%SK%/g, function () { return JSON.stringify(m.storage); });
-}
-function makeVariant(bytes, tpl) {
-  var rnd = counterRng(bytes);
-  var pick = function (s) { return s[Math.floor(rnd() * s.length)]; };
-  var LOW = 'abcdefghijklmnopqrstuvwxyz', LET = LOW + LOW.toUpperCase(), DIG = '0123456789';
-  var used = { do: 1, if: 1, in: 1 };
-  var fresh = function (gen) { for (;;) { var n = gen(); if (!used[n]) { used[n] = 1; return n; } } };
-  var word = function (min, max) { var n = min + Math.floor(rnd() * (max - min + 1)), s = pick(LOW); while (s.length < n) s += pick(LOW + DIG); return s; };
-  var ids = {}, fields = {}, kinds = {}, back = {}, kback = {};
-  tpl.ids.forEach(function (n) { ids[n] = fresh(function () { return pick(LET) + (rnd() < 0.55 ? pick(LET + DIG + '_') : ''); }); });
-  ids.G = fresh(function () { return '_' + word(3, 5); });
-  tpl.fields.forEach(function (n) { var k = fresh(function () { return word(1, 2); }); fields[n] = k; back[k] = n; });
-  tpl.kinds.forEach(function (n) { var k = fresh(function () { return word(1, 3); }); kinds[n] = k; kback[k] = n; });
-  var script = '/' + pick(['assets', 'static', 'js', 'lib', 'res', 'media', 'inc', 'build', 'dist', 'files']) + '/' + fresh(function () { return word(6, 9); }) + '.js';
-  var events = '/' + pick(['api', 'x', 'q', 'v', 'm', 'i', 'u', 'w', 'data', 'srv']) + '/' + fresh(function () { return word(5, 8); });
-  var order = tpl.blocks.map(function (_, i) { return i; });
-  for (var i = order.length - 1; i > 0; i--) { var j = Math.floor(rnd() * (i + 1)), t = order[i]; order[i] = order[j]; order[j] = t; }
-  var storage = fresh(function () { return word(4, 8); });
-  return { script: script, events: events, back: back, kback: kback,
-    js: buildCounter(tpl, { ids: ids, fields: fields, kinds: kinds, events: events, storage: storage, order: order }) };
-}
-function decodeEvent(v, text) {
-  var o, out = {}, has = Object.prototype.hasOwnProperty;
-  try { o = JSON.parse(text); } catch (e) { return null; }
-  if (!o || typeof o !== 'object' || Array.isArray(o)) return null;
-  for (var key in o) if (has.call(o, key) && has.call(v.back, key)) out[v.back[key]] = o[key];
-  if (typeof out.k === 'string' && has.call(v.kback, out.k)) out.k = v.kback[out.k];
-  return out.k ? JSON.stringify(out) : null;
-}
-`;
 
-interface CounterVariant { script: string; events: string; js: string; back: Record<string, string>; kback: Record<string, string> }
-const variantLib = new Function(VARIANT_SRC + '\nreturn { buildCounter: buildCounter, makeVariant: makeVariant, decodeEvent: decodeEvent };')() as {
-  buildCounter: (tpl: typeof COUNTER_TEMPLATE, m: Record<string, unknown>) => string;
-  makeVariant: (bytes: Uint8Array, tpl: typeof COUNTER_TEMPLATE) => CounterVariant;
-  decodeEvent: (v: CounterVariant, text: string) => string | null;
-};
+interface CounterNames { ids: Record<string, string>; fields: Record<string, string>; kinds: Record<string, string>; events: string; storage: string; order?: number[] }
+
+function buildCounter(m: CounterNames): string {
+  const blocks = m.order ? m.order.map((i) => COUNTER_BLOCKS[i]) : COUNTER_BLOCKS;
+  return (COUNTER_HEAD + blocks.join('') + COUNTER_TAIL)
+    .replace(/@([A-Za-z]+)@/g, (_, n: string) => m.ids[n] ?? n)
+    .replace(/#([a-z]+)#/g, (_, n: string) => m.fields[n] ?? n)
+    .replace(/\$([a-z]+)\$/g, (_, n: string) => JSON.stringify(m.kinds[n] ?? n))
+    .replace(/%EV%/g, () => JSON.stringify(m.events))
+    .replace(/%SK%/g, () => JSON.stringify(m.storage));
+}
+
+export interface CounterVariant {
+  /** Адрес файла счётчика на сайте. */
+  script: string;
+  /** Адрес на сайте, куда страница шлёт события. */
+  events: string;
+  /** Сам файл счётчика. */
+  js: string;
+  /** Название поля / вида события у этого сайта → обычное. */
+  back: Record<string, string>;
+  kback: Record<string, string>;
+}
+
+/**
+ * Вариант счётчика из 32 байт: свой адрес файла и событий, свои имена, названия
+ * полей, виды событий и порядок блоков. Адреса выводятся первыми — правка
+ * заготовки (новая переменная) их не сдвигает, открытые у посетителей страницы
+ * продолжают слать туда же.
+ */
+function makeVariant(bytes: Uint8Array): CounterVariant {
+  const paths = counterRng(bytes.subarray(0, 16));
+  const rnd = counterRng(bytes.subarray(16, 32));
+  const LOW = 'abcdefghijklmnopqrstuvwxyz', LET = LOW + LOW.toUpperCase(), DIG = '0123456789';
+  const used = new Set(['do', 'if', 'in']);
+  const fresh = (gen: () => string) => {
+    for (;;) {
+      const n = gen();
+      if (!used.has(n)) return used.add(n), n;
+    }
+  };
+  const from = (r: () => number) => ({
+    pick: <T,>(s: ArrayLike<T>): T => s[Math.floor(r() * s.length)],
+    word(min: number, max: number) {
+      const n = min + Math.floor(r() * (max - min + 1));
+      let w = this.pick(LOW);
+      while (w.length < n) w += this.pick(LOW + DIG);
+      return w;
+    }
+  });
+  const P = from(paths), R = from(rnd);
+  const script = '/' + P.pick(['assets', 'static', 'js', 'lib', 'res', 'media', 'inc', 'build', 'dist', 'files']) + '/' + fresh(() => P.word(6, 9)) + '.js';
+  const events = '/' + P.pick(['api', 'x', 'q', 'v', 'm', 'i', 'u', 'w', 'data', 'srv']) + '/' + fresh(() => P.word(5, 8));
+  const storage = fresh(() => P.word(4, 8));
+  const ids: Record<string, string> = {}, fields: Record<string, string> = {}, kinds: Record<string, string> = {};
+  const back: Record<string, string> = {}, kback: Record<string, string> = {};
+  for (const n of COUNTER_IDS) ids[n] = fresh(() => R.pick(LET) + (rnd() < 0.55 ? R.pick(LET + DIG + '_') : ''));
+  ids.G = fresh(() => '_' + R.word(3, 5));
+  for (const n of COUNTER_FIELDS) back[(fields[n] = fresh(() => R.word(1, 2)))] = n;
+  for (const n of COUNTER_KINDS) kback[(kinds[n] = fresh(() => R.word(1, 3)))] = n;
+  const order = COUNTER_BLOCKS.map((_, i) => i);
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  return { script, events, back, kback, js: buildCounter({ ids, fields, kinds, events, storage, order }) };
+}
 
 const VARIANT_SALT = 'gsc-hub-counter\n';
+const variantCache = new Map<string, CounterVariant>();
 
-/** Вариант счётчика сайта — тот же, что соберёт Worker с этим ключом в COUNTER_KEY. */
+/** Вариант счётчика сайта для ключа, который стоит в его Worker (COUNTER_KEY). */
 export function counterVariant(host: string, key: string): CounterVariant {
-  const seed = createHash('sha256').update(VARIANT_SALT + key + '\n' + normHost(host)).digest();
-  return variantLib.makeVariant(new Uint8Array(seed), COUNTER_TEMPLATE);
-}
-
-/** Событие от страницы варианта → событие с обычными названиями (как его шлёт Worker). */
-export function decodeCounterEvent(v: CounterVariant, body: string): string | null {
-  return variantLib.decodeEvent(v, body);
-}
-
-/** Код счётчика с обычными именами (для проверок). На сайты уходит только вариант. */
-export function pageSnippet(path: string = SITE_PATH): string {
-  return variantLib.buildCounter(COUNTER_TEMPLATE, { ids: { G: '__ghc' }, fields: {}, kinds: {}, events: path, storage: '__ghs' });
-}
-
-/** Код Cloudflare Worker: подключает счётчик к страницам и пересылает события в панель. */
-export function workerScript(panelOrigin: string): string {
-  return `// GSC Hub — счётчик просмотров, времени и кнопок для сайта (Cloudflare Worker).
-// На сайте меняется только одно: в <head> HTML-страниц добавляется
-// <script src="…" defer> — файл с адреса самого сайта (его отдаёт этот Worker),
-// поэтому защита сайта (Content-Security-Policy: script-src 'self') его пропускает.
-// У каждого сайта свой файл: адрес, имена внутри, названия полей и порядок кода
-// Worker выводит из имени сайта и секрета COUNTER_KEY. У двух сайтов файлы не
-// совпадают, и без ключа один из другого не вывести. События идут на адрес
-// самого сайта, Worker переводит их обратно и пересылает в панель.
-// Ключ панели — в секрете Worker COUNTER_KEY (Settings → Variables and Secrets), не в коде.
-const PANEL = ${JSON.stringify(panelOrigin + '/c')};
-const TPL = ${JSON.stringify(COUNTER_TEMPLATE)};
-const SALT = ${JSON.stringify(VARIANT_SALT)};
-${VARIANT_SRC}
-const VARIANTS = new Map();
-async function siteVariant(env, hostname) {
-  const host = hostname.toLowerCase().replace(/^www\\./, '').replace(/\\.$/, '');
-  let v = VARIANTS.get(host);
+  const h = normHost(host);
+  const ck = key + '\n' + h;
+  let v = variantCache.get(ck);
   if (!v) {
-    const seed = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(SALT + (env.COUNTER_KEY || '') + '\\n' + host));
-    v = makeVariant(new Uint8Array(seed), TPL);
-    VARIANTS.set(host, v);
+    v = makeVariant(new Uint8Array(createHash('sha256').update(VARIANT_SALT + ck).digest()));
+    if (variantCache.size >= 500) variantCache.clear();
+    variantCache.set(ck, v);
   }
   return v;
 }
 
-function forward(env, ctx, request, host, e) {
-  if (!env.COUNTER_KEY || !e || e.length > 4000) return;
+/** Что Worker сайта берёт из панели: где лежит файл счётчика, куда слать события, сам файл. */
+export function siteCounterConfig(host: string, key: string): { script: string; events: string; js: string } {
+  const { script, events, js } = counterVariant(host, key);
+  return { script, events, js };
+}
+
+/** Событие страницы с названиями этого сайта → JSON с обычными названиями (k, p, l, t, d, r, c, b). */
+export function decodeCounterEvent(v: CounterVariant, body: string): string | null {
+  let o: unknown;
+  try {
+    o = JSON.parse(body);
+  } catch {
+    return null;
+  }
+  if (!o || typeof o !== 'object' || Array.isArray(o)) return null;
+  const out: Record<string, unknown> = {};
+  for (const [k, val] of Object.entries(o)) if (Object.hasOwn(v.back, k)) out[v.back[k]] = val;
+  if (typeof out.k === 'string' && Object.hasOwn(v.kback, out.k)) out.k = v.kback[out.k];
+  return out.k ? JSON.stringify(out) : null;
+}
+
+/**
+ * Тело от Worker → вход для parseWorkerEvent. Новый Worker присылает событие
+ * страницы как есть ({ h, b }) — переводим его здесь ключом, с которым он пришёл.
+ * Готовые события ({ h, e }: переход к оплате, старые Worker) — без изменений.
+ */
+export function workerEventInput(body: unknown, key: string | null): unknown {
+  if (!body || typeof body !== 'object') return body;
+  const { h, b } = body as { h?: unknown; b?: unknown };
+  if (typeof b !== 'string') return body;
+  if (!key || b.length > 4000) return null;
+  return { h, e: decodeCounterEvent(counterVariant(String(h ?? ''), key), b) };
+}
+
+/** Код счётчика с обычными именами (для проверок). На сайты уходит только вариант. */
+export function pageSnippet(path: string = SITE_PATH): string {
+  return buildCounter({ ids: { G: '__ghc' }, fields: {}, kinds: {}, events: path, storage: '__ghs' });
+}
+
+/**
+ * Код Cloudflare Worker. Ставится один раз: файл счётчика, его адрес и адрес
+ * событий Worker берёт из панели (GET /c/site) и обновляет сам, а события
+ * страницы пересылает как есть — переводит их панель. Поэтому всё, что
+ * меняется в счётчике, меняется только в панели.
+ */
+export function workerScript(panelOrigin: string): string {
+  return `// GSC Hub — счётчик просмотров, времени и кнопок для сайта (Cloudflare Worker).
+// Ставится один раз. Файл счётчика Worker берёт из панели и раз в 10 минут
+// обновляет сам: у каждого сайта он свой (адрес, имена внутри, названия полей),
+// и при обновлениях счётчика этот код менять не нужно.
+// Если панель не отвечает, сайт работает как обычно — только без подсчёта.
+// На сайте меняется только одно: в <head> HTML-страниц добавляется
+// <script src="…" defer> — файл с адреса самого сайта (его отдаёт этот Worker),
+// поэтому защита сайта (Content-Security-Policy: script-src 'self') его пропускает.
+// Ключ панели — в секрете Worker COUNTER_KEY (Settings → Variables and Secrets), не в коде.
+const PANEL = ${JSON.stringify(panelOrigin + '/c')};
+const FRESH_MS = 10 * 60 * 1000; // настройки сайта обновляются раз в 10 минут
+const RETRY_MS = 60 * 1000; // панель не ответила — снова спросим через минуту
+const WAIT_MS = 1000; // первую страницу из-за панели держим не дольше секунды, остальные не держим
+const SITES = new Map();
+
+function loadConfig(env, host) {
+  return fetch(PANEL + '/site?h=' + encodeURIComponent(host), {
+    headers: { 'X-Counter-Key': env.COUNTER_KEY || '' },
+    signal: AbortSignal.timeout(5000),
+    cf: { cacheEverything: true, cacheTtlByStatus: { '200-299': 600, '300-599': 0 } }
+  })
+    .then((r) => (r.status === 200 ? r.json() : null))
+    .then((c) => (c && typeof c.script === 'string' && typeof c.events === 'string' && typeof c.js === 'string' ? c : null))
+    .catch(() => null);
+}
+
+/**
+ * Настройки сайта. Есть (пусть и старые) — сразу, обновление идёт в фоне.
+ * Нет никаких — панель ждёт только первая страница и не дольше WAIT_MS;
+ * следующие, пока панель молчит, открываются без счётчика и без ожидания.
+ */
+async function siteConfig(env, ctx, host) {
+  let s = SITES.get(host);
+  if (!s) SITES.set(host, (s = { cfg: null, next: 0, pending: null, waited: false }));
+  if (Date.now() >= s.next && !s.pending) {
+    s.pending = loadConfig(env, host).then((cfg) => {
+      if (cfg) s.cfg = cfg;
+      s.next = Date.now() + (cfg ? FRESH_MS : RETRY_MS);
+      s.pending = null;
+      return s.cfg;
+    });
+    ctx.waitUntil(s.pending);
+  }
+  if (s.cfg || !s.pending || s.waited) return s.cfg;
+  s.waited = true;
+  return Promise.race([s.pending, new Promise((r) => setTimeout(() => r(null), WAIT_MS))]);
+}
+
+function forward(env, ctx, request, host, data) {
+  if (!env.COUNTER_KEY) return;
   ctx.waitUntil(
     fetch(PANEL, {
       method: 'POST',
@@ -356,7 +437,7 @@ function forward(env, ctx, request, host, e) {
         'X-Client-IP': request.headers.get('CF-Connecting-IP') || '',
         'X-Client-UA': request.headers.get('User-Agent') || ''
       },
-      body: JSON.stringify({ h: host, e })
+      body: JSON.stringify(Object.assign({ h: host }, data))
     }).catch(() => {})
   );
 }
@@ -364,12 +445,16 @@ function forward(env, ctx, request, host, e) {
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
-    const v = await siteVariant(env, url.hostname);
-    if (url.pathname === v.script) {
-      return new Response(v.js, { headers: { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=3600' } });
+    const host = url.hostname.toLowerCase().replace(/^www\\./, '').replace(/\\.$/, '');
+    const cfg = await siteConfig(env, ctx, host);
+    if (cfg && url.pathname === cfg.script) {
+      return new Response(cfg.js, { headers: { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=600' } });
     }
-    if (url.pathname === v.events) {
-      if (request.method === 'POST') forward(env, ctx, request, url.hostname, decodeEvent(v, await request.text()));
+    if (cfg && url.pathname === cfg.events) {
+      if (request.method === 'POST') {
+        const b = await request.text();
+        if (b.length <= 4000) forward(env, ctx, request, host, { b });
+      }
       return new Response(null, { status: 204, headers: { 'Cache-Control': 'no-store' } });
     }
     const res = await fetch(request);
@@ -388,14 +473,14 @@ export default {
             const ref = new URL(request.headers.get('Referer') || '');
             if (ref.hostname === url.hostname) from = ref.pathname;
           } catch (e) {}
-          forward(env, ctx, request, url.hostname, JSON.stringify({ k: 'submit', p: from, l: 'Переход к оплате', t: target }));
+          forward(env, ctx, request, host, { e: JSON.stringify({ k: 'submit', p: from, l: 'Переход к оплате', t: target }) });
         }
       } catch (e) {}
       return res;
     }
-    if (request.method !== 'GET' || !(res.headers.get('Content-Type') || '').includes('text/html')) return res;
+    if (!cfg || request.method !== 'GET' || !(res.headers.get('Content-Type') || '').includes('text/html')) return res;
     return new HTMLRewriter()
-      .on('head', { element(el) { el.append('<script src="' + v.script + '" defer></script>', { html: true }); } })
+      .on('head', { element(el) { el.append('<script src="' + cfg.script + '" defer></script>', { html: true }); } })
       .transform(res);
   }
 };

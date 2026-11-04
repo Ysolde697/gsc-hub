@@ -3,7 +3,7 @@ import { db } from '$lib/server/db';
 import { listAllKnownSites } from '$lib/server/google';
 import { siteHostname } from '$lib/utils/url-filters';
 import { counterKeyOk } from '$lib/server/config';
-import { allowClick, clicksToday, countedHosts, isBotUA, normHost, parseWorkerEvent, recordClick, recordTime } from '$lib/server/button-clicks';
+import { allowClick, clicksToday, countedHosts, isBotUA, normHost, parseWorkerEvent, recordClick, recordTime, workerEventInput } from '$lib/server/button-clicks';
 
 // Приём событий счётчика от Cloudflare Worker ваших сайтов (без входа, но с
 // секретным ключом). Считаем только ваши сайты из подключённых консолей,
@@ -51,7 +51,8 @@ export const POST: RequestHandler = async ({ request }) => {
   const ua = request.headers.get('x-client-ua') ?? '';
   const ip = request.headers.get('x-client-ip') || 'worker';
   try {
-    const parsed = parseWorkerEvent(await request.json());
+    // Новый Worker присылает событие страницы как есть — переводим его ключом сайта.
+    const parsed = parseWorkerEvent(workerEventInput(await request.json(), request.headers.get('x-counter-key')));
     if (!parsed) return EMPTY();
     const host = 'click' in parsed ? parsed.click.host : parsed.time.host;
     // Любой выданный и не отозванный ключ; запоминаем, с какого сайта он пришёл.

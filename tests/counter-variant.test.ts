@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
-import { counterVariant, decodeCounterEvent, parseWorkerEvent, pageSnippet, workerScript } from '../src/lib/server/button-clicks';
+import { describe, it, expect } from 'vitest';
+import { counterVariant, decodeCounterEvent, parseWorkerEvent, pageSnippet, siteCounterConfig, workerEventInput } from '../src/lib/server/button-clicks';
+import { isPublicPath } from '../src/lib/server/guard';
 
 const KEY = 'test-key-0123456789';
 const SITES = ['futcoin.nl', 'futcoin.es', 'fc-27.com', 'futcoins.co.uk', 'fut-coins.nl', 'fut-coins.es', 'futcoin.at'];
@@ -88,44 +89,24 @@ describe('у каждого сайта свой счётчик', () => {
   });
 });
 
-describe('Worker', () => {
-  afterEach(() => vi.unstubAllGlobals());
-
-  it('собирает тот же вариант, что панель, отдаёт файл и пересылает событие в панель', async () => {
-    const mod = new Function(workerScript('https://panel.example').replace('export default', 'return'))() as {
-      fetch: (r: Request, env: unknown, ctx: unknown) => Promise<Response>;
-    };
-    const env = { COUNTER_KEY: KEY };
-    const waits: Promise<unknown>[] = [];
-    const ctx = { waitUntil: (p: Promise<unknown>) => waits.push(p) };
+describe('панель переводит события нового Worker', () => {
+  it('{ h, b } переводится ключом сайта; готовые события и старые Worker — как были', async () => {
     const v = counterVariant('fut-coins.nl', KEY);
-
-    const file = await mod.fetch(new Request('https://www.fut-coins.nl' + v.script), env, ctx);
-    expect(file.headers.get('Content-Type')).toContain('javascript');
-    expect(await file.text()).toBe(v.js);
-
     const { sent } = run(v.js, { referrer: 'https://www.google.com/' });
-    const calls: { url: string; body: string; ua: string | null }[] = [];
-    vi.stubGlobal('fetch', async (url: string | Request, init?: RequestInit) => {
-      if (url instanceof Request) calls.push({ url: url.url, body: '', ua: null });
-      else calls.push({ url, body: String(init?.body), ua: new Headers(init?.headers).get('X-Client-UA') });
-      return new Response(null, { status: 204 });
-    });
-    const ua = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1';
-    const res = await mod.fetch(new Request('https://fut-coins.nl' + v.events, { method: 'POST', body: await sent[0], headers: { 'User-Agent': ua } }), env, ctx);
-    await Promise.all(waits);
-    expect(res.status).toBe(204);
-    expect(calls).toHaveLength(1);
-    expect(calls[0].url).toBe('https://panel.example/c');
-    expect(calls[0].ua).toBe(ua);
-    const body = JSON.parse(calls[0].body);
-    expect(body.h).toBe('fut-coins.nl');
-    expect(parseWorkerEvent(body)).toEqual({ click: { host: 'fut-coins.nl', page: '/', kind: 'view', label: '(без текста)', target: 'google.com' } });
+    const b = await sent[0];
+    expect(parseWorkerEvent(workerEventInput({ h: 'fut-coins.nl', b }, KEY))).toMatchObject({ click: { kind: 'view', target: 'google.com' } });
+    // другим ключом это событие не прочитать
+    expect(parseWorkerEvent(workerEventInput({ h: 'fut-coins.nl', b }, 'чужой ключ'))).toBeNull();
+    expect(workerEventInput({ h: 'fut-coins.nl', b }, null)).toBeNull();
+    const ready = { h: 'fut-coins.nl', e: JSON.stringify({ k: 'submit', p: '/', l: 'Переход к оплате', t: '/kassa/' }) };
+    expect(workerEventInput(ready, KEY)).toBe(ready);
+  });
 
-    // Старый адрес /_e.js этот Worker больше не отдаёт — запрос уходит на сайт.
-    const old = await mod.fetch(new Request('https://fut-coins.nl/_e.js'), env, ctx);
-    expect(old.status).toBe(204); // ответ заглушки сайта
-    expect(calls).toHaveLength(2);
-    expect(calls[1].url).toBe('https://fut-coins.nl/_e.js');
+  it('Worker получает из панели только адреса и сам файл', () => {
+    const c = siteCounterConfig('fut-coins.nl', KEY);
+    expect(Object.keys(c).sort()).toEqual(['events', 'js', 'script']);
+    expect(c.js).toBe(counterVariant('fut-coins.nl', KEY).js);
+    expect(isPublicPath('/c/site')).toBe(true);
+    expect(isPublicPath('/c/sites')).toBe(false);
   });
 });
