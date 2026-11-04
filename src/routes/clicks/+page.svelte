@@ -139,7 +139,7 @@
     <details class="border-b border-line" open={Object.keys(data.lastSeen).length === 0}>
       <summary class="cursor-pointer px-3 py-2 text-sm font-semibold">Как подключить счётчик к сайту (Cloudflare)</summary>
       <div class="space-y-2 px-3 pb-3 text-sm text-ink-2">
-        <p>Считает Cloudflare Worker: он подключает к страницам маленький файл счётчика <b>с адреса самого сайта</b> (<code>/_e.js</code>) — защита сайта (CSP) его пропускает, в шаблоне ничего не меняется, адреса панели на сайте нет, сайты между собой не связаны. Переход к оплате, который сразу уводит на кассу, Worker засчитывает сам.</p>
+        <p>Считает Cloudflare Worker: он подключает к страницам маленький файл счётчика <b>с адреса самого сайта</b> — защита сайта (CSP) его пропускает, в шаблоне ничего не меняется, адреса панели на сайте нет. <b>У каждого сайта свой файл</b>: свой адрес, свои имена внутри и свои названия полей — Worker выводит их из имени сайта и ключа, так что файлы разных сайтов не совпадают и по ним сайты не связать. Переход к оплате, который сразу уводит на кассу, Worker засчитывает сам.</p>
         <ol class="ml-5 list-decimal space-y-1">
           <li>Cloudflare → <b>Workers &amp; Pages</b> → <b>Create</b> → <b>Create Worker</b> (Hello World) → назовите, например, <code>site-stats</code> → <b>Deploy</b>.</li>
           <li><b>Edit code</b> → удалите всё, вставьте код ниже («Копировать код Worker») → <b>Deploy</b>.</li>

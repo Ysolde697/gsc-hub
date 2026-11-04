@@ -5,6 +5,21 @@ All notable changes to this project are documented here. Format loosely follows
 
 Русская версия — [CHANGELOG.ru.md](CHANGELOG.ru.md).
 
+## [Unreleased]
+
+### Changed
+- **Every site gets its own counter file.** The Worker used to serve the same
+  `/_e.js` to every site. Now the file and event paths, the names inside, the
+  field names and the code order differ per site: the Worker derives them from
+  the site's hostname and the `COUNTER_KEY` secret. Without the key, the files of
+  different sites cannot be linked. The page code no longer carries Cyrillic text
+  or the button word list — the panel decides what counts as a button.
+
+### How to update
+Copy the new Worker code ("Кнопки" → "Как подключить счётчик") into the Worker of
+every site. The key and routes stay the same. Until a site's Worker is updated,
+the old counter keeps counting.
+
 ## [0.9.3] - 2026-10-27
 
 ### How to update
