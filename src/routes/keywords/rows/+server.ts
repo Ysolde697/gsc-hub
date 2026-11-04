@@ -5,6 +5,8 @@ import { db } from '$lib/server/db';
 import { requireAdmin } from '$lib/server/guard';
 import { getAccount } from '$lib/server/accounts';
 import { parsePeriod, siteKeysForPeriod } from '$lib/server/site-keys';
+import { clicksForRange, normHost } from '$lib/server/button-clicks';
+import { siteHostname } from '$lib/utils/url-filters';
 
 /** Все ключи одного сайта за период: ?site=&acc=&p=today|yesterday|7|28|90|180|480 */
 export const GET: RequestHandler = async ({ url, locals }) => {
@@ -15,7 +17,14 @@ export const GET: RequestHandler = async ({ url, locals }) => {
   if (!acc) throw error(404, 'консоль не найдена');
   const p = reportPeriod(db());
   try {
-    return json({ rows: await siteKeysForPeriod(db(), acc, site, p), period: p });
+    // Переходы к оплате по страницам сайта за тот же период (счётчик хаба):
+    // у ключа показываем те, что сделаны на его странице.
+    const host = normHost(siteHostname(site));
+    const checkouts: Record<string, number> = {};
+    for (const r of clicksForRange(db(), p.startDate, p.endDate)) {
+      if (r.host === host && r.kind === 'submit') checkouts[r.page] = (checkouts[r.page] ?? 0) + r.n;
+    }
+    return json({ rows: await siteKeysForPeriod(db(), acc, site, p), checkouts, period: p });
   } catch (e) {
     throw error(502, (e as Error).message.slice(0, 200));
   }

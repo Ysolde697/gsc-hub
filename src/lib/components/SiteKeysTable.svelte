@@ -8,6 +8,7 @@
   import LastPlanCell from './LastPlanCell.svelte';
   import OtherSitesInline from './OtherSitesInline.svelte';
   import VolumeCell from './VolumeCell.svelte';
+  import PositionChart from './PositionChart.svelte';
   import { TableSort } from '$lib/table-sort.svelte';
   import { classifyIntent } from '$lib/utils/intent';
   import { Volumes } from '$lib/volumes.svelte';
@@ -17,6 +18,44 @@
   let { siteUrl, accountId, period, siteTotals = null }: { siteUrl: string; accountId: string; period: string; siteTotals?: { clicks: number; impressions: number } | null } = $props();
 
   let rows = $state<Row[]>([]);
+  // Переходы к оплате по страницам сайта за период (счётчик хаба): путь → сколько.
+  let checkouts = $state<Record<string, number>>({});
+  const pathOf = (page: string) => { try { return new URL(page).pathname; } catch { return page; } };
+  const checkoutOf = (r: Row) => checkouts[pathOf(r.page)] ?? 0;
+  const checkoutTotal = $derived(Object.values(checkouts).reduce((a, b) => a + b, 0));
+
+  // Графики по дням: сайт целиком и отдельный ключ (ключ + страница).
+  type Pt = { date: string; clicks: number; impressions: number; position: number | null };
+  const multiDay = $derived(period !== 'today' && period !== 'yesterday');
+  let siteChart = $state<{ loading: boolean; points: Pt[]; err: string | null }>({ loading: false, points: [], err: null });
+  let showSiteChart = $state(true);
+  let kwOpen = $state<string | null>(null);
+  let kwCharts = $state<Record<string, { loading: boolean; points: Pt[]; err: string | null }>>({});
+  async function fetchDaily(extra: string): Promise<Pt[]> {
+    const r = await fetch(`/keywords/daily?site=${encodeURIComponent(siteUrl)}&acc=${encodeURIComponent(accountId)}${extra}`);
+    if (!r.ok) throw new Error((await r.text()).slice(0, 200) || `HTTP ${r.status}`);
+    return (await r.json()).points ?? [];
+  }
+  async function loadSiteChart() {
+    if (!multiDay) return;
+    siteChart = { loading: true, points: [], err: null };
+    try {
+      siteChart = { loading: false, points: await fetchDaily(''), err: null };
+    } catch (e) {
+      siteChart = { loading: false, points: [], err: (e as Error).message };
+    }
+  }
+  async function toggleKw(r: Row) {
+    const k = r.page + '\n' + r.query;
+    kwOpen = kwOpen === k ? null : k;
+    if (kwOpen === null || kwCharts[k]) return;
+    kwCharts[k] = { loading: true, points: [], err: null };
+    try {
+      kwCharts[k] = { loading: false, points: await fetchDaily(`&q=${encodeURIComponent(r.query)}&page=${encodeURIComponent(r.page)}`), err: null };
+    } catch (e) {
+      kwCharts[k] = { loading: false, points: [], err: (e as Error).message };
+    }
+  }
   let loading = $state(true);
   let err = $state<string | null>(null);
   let other = $state<Record<string, { owners: OtherOwner[]; links: OtherLink[] }>>({});
@@ -35,7 +74,9 @@
     try {
       const r = await fetch(`/keywords/rows?site=${encodeURIComponent(siteUrl)}&acc=${encodeURIComponent(accountId)}&p=${period}`);
       if (!r.ok) throw new Error((await r.text()).slice(0, 200) || `HTTP ${r.status}`);
-      rows = (await r.json()).rows ?? [];
+      const j = await r.json();
+      rows = j.rows ?? [];
+      checkouts = j.checkouts ?? {};
     } catch (e) {
       err = (e as Error).message;
       return;
@@ -51,11 +92,14 @@
       .catch(() => {})
       .finally(() => (otherLoading = false));
   }
-  onMount(load);
+  onMount(() => {
+    load();
+    loadSiteChart();
+  });
 
   const intentOf = (r: Row) => classifyIntent(r.query, r.page);
-  type K = 'query' | 'intent' | 'page' | 'position' | 'impressions' | 'volume' | 'clicks' | 'ctr' | 'others' | 'last' | 'group';
-  const sort = new TableSort<K>('impressions', -1, ['impressions', 'volume', 'clicks', 'ctr', 'others', 'last', 'group']);
+  type K = 'query' | 'intent' | 'page' | 'position' | 'impressions' | 'volume' | 'clicks' | 'ctr' | 'checkout' | 'others' | 'last' | 'group';
+  const sort = new TableSort<K>('impressions', -1, ['impressions', 'volume', 'clicks', 'ctr', 'checkout', 'others', 'last', 'group']);
   const filtered = $derived.by(() => {
     const s = search.trim().toLowerCase();
     return rows.filter((r) => {
@@ -69,6 +113,7 @@
     sort.apply(filtered, (r, k) => {
       if (k === 'intent') return ((t) => (t === 'conv' ? 1 : t === 'brand' ? 2 : null))(intentOf(r));
       if (k === 'volume') return vols.sortValue(r.query);
+      if (k === 'checkout') return checkoutOf(r) || null;
       if (k === 'others') {
         const e = other[r.query];
         if (!e) return null;
@@ -120,7 +165,7 @@
       {/each}
     </div>
     {#if !loading && !err}
-      <span class="text-ink-3">{fmt(filtered.length)} строк · {fmt(totals.impressions)} показов · {fmt(totals.clicks)} кликов</span>
+      <span class="text-ink-3">{fmt(filtered.length)} строк · {fmt(totals.impressions)} показов · {fmt(totals.clicks)} кликов · перешли к оплате на сайте {fmt(checkoutTotal)}</span>
       {#if hidden}<span class="rounded bg-warn-t px-1.5 py-0.5 text-ink-2" title="Google скрывает редкие запросы (их ищут единицы людей) ради приватности. Их клики и показы входят в итог сайта, но ключей не видно — так же и в самой Search Console.">Скрыто Google: {fmt(hidden.clicks)} кликов · {fmt(hidden.impressions)} показов</span>{/if}
       <span class="flex-1"></span>
       <button type="button" class="btn btn-sec btn-sm" disabled={vols.checking || !filtered.length} title="Точная частотность от Google Ads по ключам в таблице (с учётом фильтра)" onclick={checkVolumes}>{vols.checking ? 'Проверяю…' : pickedQs.length ? `Частотность отмеченных в DataForSEO (${pickedQs.length})` : `Частотность в DataForSEO — все (${visibleQs.length})`}</button>
@@ -129,6 +174,21 @@
   </div>
   {#if vols.error}<p class="mb-1 text-xs text-bad">{vols.error}{#if !vols.configured} — <a class="text-acc underline" href="/settings/integrations">раздел «Сервисы»</a>{/if}</p>{/if}
   {#if vols.note}<p class="mb-1 text-xs text-emerald-700">{vols.note}</p>{/if}
+
+  {#if multiDay}
+    <div class="mb-2 rounded border border-line bg-pane p-2">
+      <button type="button" class="mb-1 flex items-center gap-1 text-xs font-semibold text-ink-2" onclick={() => (showSiteChart = !showSiteChart)}>
+        <svg viewBox="0 0 16 16" class="h-3 w-3 transition-transform {showSiteChart ? 'rotate-90' : ''}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5"/></svg>
+        Позиция сайта по дням
+      </button>
+      {#if showSiteChart}
+        {#if siteChart.loading}<p class="loading text-xs">Загружаю график…</p>
+        {:else if siteChart.err}<p class="text-xs text-bad">График не загрузился: {siteChart.err}</p>
+        {:else if siteChart.points.some((p) => p.position !== null)}<PositionChart points={siteChart.points} />
+        {:else}<p class="text-xs text-ink-3">За этот период показов в Google нет.</p>{/if}
+      {/if}
+    </div>
+  {/if}
 
   {#if loading}
     <p class="loading text-xs">Загружаю ключи…</p>
@@ -152,6 +212,7 @@
             <SortTh {sort} k="volume" label={vols.country ? `Частотность · ${vols.country.toUpperCase()}` : 'Частотность'} num />
             <SortTh {sort} k="clicks" label="Clicks" num />
             <SortTh {sort} k="ctr" label="CTR" num />
+            <SortTh {sort} k="checkout" label="Оплата" num title="Переходы к оплате (на партнёрку), сделанные на странице этого ключа за период — по счётчику хаба. По какому ключу пришёл посетитель, Google не сообщает, поэтому у ключей одной страницы число одно и то же" />
             <SortTh {sort} k="others" label="Мои другие сайты" title="Другие ваши сайты той же страны по этому ключу и ссылки на них. Красным — стоит выше" />
             <SortTh {sort} k="last" label="Последняя закупка" />
             <SortTh {sort} k="group" label="В группу" num />
@@ -161,7 +222,12 @@
           {#each shown.slice(0, limit) as r (r.page + '\n' + r.query)}
             <tr class:is-selected={picked.has(r.query)}>
               <td><input type="checkbox" checked={picked.has(r.query)} aria-label="Отметить ключ {r.query}" onchange={() => pickToggle(r.query)} /></td>
-              <td class="pii font-medium">{r.query}</td>
+              <td class="pii font-medium">
+                <span class="flex items-center gap-1">
+                  {r.query}
+                  {#if multiDay}<button type="button" class="btn btn-ghost btn-sm h-5 px-1 {kwOpen === r.page + '\n' + r.query ? 'text-acc' : 'text-ink-4'}" title="Позиция этого ключа по дням" aria-label="График позиции ключа {r.query}" onclick={() => toggleKw(r)}><svg viewBox="0 0 16 16" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12l4-4 3 3 5-6"/></svg></button>{/if}
+                </span>
+              </td>
               <td><IntentBadge query={r.query} page={r.page} /></td>
               <td class="min-w-[14rem] max-w-sm"><a class="pii break-all text-ink-3 hover:text-acc hover:underline" href={r.page} target="_blank" rel="noopener noreferrer">{r.page}</a></td>
               <td class="num app-num">{r.position.toFixed(1)}</td>
@@ -169,10 +235,24 @@
               <td class="num"><VolumeCell v={vols.byQuery[r.query]} loading={vols.loading} /></td>
               <td class="num app-num">{fmt(r.clicks)}</td>
               <td class="num app-num">{(r.ctr * 100).toFixed(1)}%</td>
+              <td class="num app-num">{#if checkoutOf(r)}<span class="badge badge-ok" title="Переходы к оплате на странице {pathOf(r.page)} за период">✓ {fmt(checkoutOf(r))}</span>{:else}<span class="text-ink-4">—</span>{/if}</td>
               <td class="min-w-[10rem]"><OtherSitesInline owners={other[r.query]?.owners ?? []} links={other[r.query]?.links ?? []} position={r.position} loading={otherLoading} query={r.query} /></td>
               <td><LastPlanCell page={r.page} query={r.query} /></td>
               <td class="num"><GroupCell row={{ siteUrl, query: r.query, page: r.page, position: r.position, impressions: r.impressions, clicks: r.clicks, ctr: r.ctr }} /></td>
             </tr>
+            {#if kwOpen === r.page + '\n' + r.query}
+              {@const c = kwCharts[kwOpen]}
+              <tr class="bg-sunk hover:bg-sunk">
+                <td></td>
+                <td colspan="12" class="py-2">
+                  <div class="mb-1 text-xs font-semibold text-ink-2">«{r.query}» на {pathOf(r.page)} — по дням</div>
+                  {#if !c || c.loading}<p class="loading text-xs">Загружаю график…</p>
+                  {:else if c.err}<p class="text-xs text-bad">График не загрузился: {c.err}</p>
+                  {:else if c.points.some((p) => p.position !== null)}<PositionChart points={c.points} height={150} />
+                  {:else}<p class="text-xs text-ink-3">По дням данных нет: Google показывает этот ключ слишком редко.</p>{/if}
+                </td>
+              </tr>
+            {/if}
           {/each}
         </tbody>
       </table>
