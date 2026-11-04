@@ -84,7 +84,8 @@
     return [...m.values()];
   });
   type K = 'host' | 'impr' | 'gsc' | 'bImpr' | 'bClicks' | 'views' | 'avg' | 'buttons' | 'submits' | 'rateButton' | 'rateSubmit';
-  const sort = new TableSort<K>('submits', -1, ['impr', 'gsc', 'bImpr', 'bClicks', 'views', 'avg', 'buttons', 'submits', 'rateButton', 'rateSubmit']);
+  // По умолчанию — по кликам из Google, от больших к меньшим.
+  const sort = new TableSort<K>('gsc', -1, ['impr', 'gsc', 'bImpr', 'bClicks', 'views', 'avg', 'buttons', 'submits', 'rateButton', 'rateSubmit']);
   const sites = $derived(sort.apply(sitesRaw, (s, k) => s[k]));
 
   type DK = 'label' | 'kind' | 'page' | 'target' | 'n';
@@ -235,19 +236,6 @@
               <SortTh {sort} k="submits" label="Перешли к оплате" num title="Нажали кнопку заказа («Continue to checkout», «Afrekenen»…) и реально ушли на оплату / к партнёру. Если сайт не пустил (например, сумма мала) — не считается" />
               <SortTh {sort} k="rateSubmit" label="% от просмотров" num title="Перешли к оплате / просмотры страниц" />
             </tr>
-            <tr class="bg-sunk font-semibold text-ink" title="Сумма по всем сайтам в таблице; среднее время и доли — по всем сайтам вместе">
-              <td class="whitespace-nowrap">Итого: {fmt(totals.n)} {sitesWord(totals.n)}</td>
-              <td class="num app-num">{fmt(totals.impr)}</td>
-              <td class="num app-num">{fmt(totals.gsc)}</td>
-              <td class="num app-num" title={bingCovers ? '' : bingWhy('')}>{bingCovers ? fmt(totals.bImpr) : '—'}</td>
-              <td class="num app-num" title={bingCovers ? '' : bingWhy('')}>{bingCovers ? fmt(totals.bClicks) : '—'}</td>
-              <td class="num app-num">{fmt(totals.v)}</td>
-              <td class="num app-num">{dur(totals.v ? totals.sec / totals.v : null)}</td>
-              <td class="num app-num">{fmt(totals.b)}</td>
-              <td class="num app-num">{pct(totals.v ? totals.b / totals.v : null)}</td>
-              <td class="num app-num">{fmt(totals.s)}</td>
-              <td class="num app-num">{pct(totals.v ? totals.s / totals.v : null)}</td>
-            </tr>
           </thead>
           <tbody>
             {#each sites as s (s.host)}
@@ -361,6 +349,21 @@
               {/if}
             {/each}
           </tbody>
+          <tfoot>
+            <tr class="border-t-2 border-line bg-sunk font-semibold text-ink" title="Сумма по всем сайтам в таблице; среднее время и доли — по всем сайтам вместе">
+              <td class="whitespace-nowrap">Итого: {fmt(totals.n)} {sitesWord(totals.n)}</td>
+              <td class="num app-num">{fmt(totals.impr)}</td>
+              <td class="num app-num">{fmt(totals.gsc)}</td>
+              <td class="num app-num" title={bingCovers ? '' : bingWhy('')}>{bingCovers ? fmt(totals.bImpr) : '—'}</td>
+              <td class="num app-num" title={bingCovers ? '' : bingWhy('')}>{bingCovers ? fmt(totals.bClicks) : '—'}</td>
+              <td class="num app-num">{fmt(totals.v)}</td>
+              <td class="num app-num">{dur(totals.v ? totals.sec / totals.v : null)}</td>
+              <td class="num app-num">{fmt(totals.b)}</td>
+              <td class="num app-num">{pct(totals.v ? totals.b / totals.v : null)}</td>
+              <td class="num app-num">{fmt(totals.s)}</td>
+              <td class="num app-num">{pct(totals.v ? totals.s / totals.v : null)}</td>
+            </tr>
+          </tfoot>
         </table>
       </div>
     {/if}
