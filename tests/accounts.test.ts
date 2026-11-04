@@ -129,4 +129,20 @@ describe('accounts', () => {
     markRevoked(db, 'gone', 'refresh 400: invalid_grant');
     expect(listReportAccounts(db).map((a) => a.id).sort()).toEqual(['err', 'ok']);
   });
+
+  it('remembers when a console was (re)connected and when its status changed', () => {
+    upsertAccount(db, { id: 'c1', email: 'c1@x', access_token: 't', refresh_token: 'r', expires_at: 0, scope: 's' });
+    const first = getAccount(db, 'c1')!;
+    expect(first.connected_at).toBeGreaterThan(0);
+    expect(first.status_at).toBe(first.connected_at);
+    db.prepare('UPDATE google_accounts SET connected_at = 1, status_at = 1 WHERE id = ?').run('c1');
+    markRevoked(db, 'c1', 'refresh 400: invalid_grant');
+    const lost = getAccount(db, 'c1')!;
+    expect(lost.status).toBe('revoked');
+    expect(lost.status_at).toBeGreaterThan(1);
+    upsertAccount(db, { id: 'c1', email: 'c1@x', access_token: 't2', refresh_token: 'r2', expires_at: 0, scope: 's' });
+    const back = getAccount(db, 'c1')!;
+    expect(back.status).toBe('active');
+    expect(back.connected_at).toBeGreaterThan(1);
+  });
 });

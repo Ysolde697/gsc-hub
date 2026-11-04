@@ -52,6 +52,8 @@ export const load: LayoutServerLoad = async ({ locals, depends }) => {
           status: a.status,
           // Последний ответ Google с ошибкой — для плашки над страницей.
           error: a.status === 'active' ? null : a.last_error,
+          connectedAt: a.connected_at ?? a.added_at,
+          statusAt: a.status_at,
           inUse: a.in_use !== 0
         }))
       : [],

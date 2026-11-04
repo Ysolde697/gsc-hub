@@ -387,6 +387,15 @@ export function openDb(path: string): Db {
   if (!cols.some((c) => c.name === 'owner_id')) {
     db.exec('ALTER TABLE google_accounts ADD COLUMN owner_id TEXT');
   }
+  // Когда консоль подключили (в последний раз) и когда сменился её статус —
+  // чтобы при отключении было видно, через сколько дней Google снял доступ.
+  if (!cols.some((c) => c.name === 'connected_at')) {
+    db.exec('ALTER TABLE google_accounts ADD COLUMN connected_at INTEGER');
+    db.exec('UPDATE google_accounts SET connected_at = added_at');
+  }
+  if (!cols.some((c) => c.name === 'status_at')) {
+    db.exec('ALTER TABLE google_accounts ADD COLUMN status_at INTEGER');
+  }
   // Группа зафиксирована (fixed_at) и сайт группы пройден (done_at).
   const groupCols = db.prepare("PRAGMA table_info('site_groups')").all() as Array<{ name: string }>;
   if (!groupCols.some((c) => c.name === 'fixed_at')) db.exec('ALTER TABLE site_groups ADD COLUMN fixed_at INTEGER');

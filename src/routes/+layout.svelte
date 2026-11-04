@@ -37,10 +37,14 @@
   // Консоли, с которыми Google сейчас не работает: плашка над каждой страницей,
   // чтобы нули и пропавшие сайты не выглядели как «данных нет».
   const brokenConsoles = $derived(
-    ((data?.consoles ?? []) as { id: string; email: string; label: string | null; status: string; error?: string | null }[]).filter(
+    ((data?.consoles ?? []) as { id: string; email: string; label: string | null; status: string; error?: string | null; connectedAt?: number | null; statusAt?: number | null }[]).filter(
       (c) => c.status !== 'active'
     )
   );
+  // «Отключена 04.11 в 09:12 — через 7 дн. после подключения 28.10»: по сроку видно причину.
+  const dm = (sec: number) => new Date(sec * 1000).toLocaleString('ru-RU', { timeZone: 'Europe/Berlin', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  const lostAfter = (c: { connectedAt?: number | null; statusAt?: number | null }) =>
+    c.statusAt ? `Отключена ${dm(c.statusAt)}${c.connectedAt && c.statusAt >= c.connectedAt ? ` — через ${Math.round((c.statusAt - c.connectedAt) / 86400)} дн. после подключения ${dm(c.connectedAt).slice(0, 5)}` : ''}.` : '';
   const testingExpiry = $derived(brokenConsoles.some((c) => c.status === 'revoked' && /invalid_grant/i.test(c.error ?? '')));
   const user = $derived(data?.user ?? null);
   const isAdmin = $derived(user?.role === 'admin');
@@ -213,7 +217,7 @@
       <p>
         {#if c.status === 'revoked'}
           <b>Google отключил доступ к консоли <span class="pii">{c.label || c.email}</span>.</b>
-          Её сайтов нет в отчётах, пока её не переподключить: <a href="/">Accounts</a> → Connect тем же аккаунтом Google.
+          {lostAfter(c)} Её сайтов нет в отчётах, пока её не переподключить: <a href="/">Accounts</a> → Connect тем же аккаунтом Google.
         {:else}
           <b>Google ответил ошибкой для консоли <span class="pii">{c.label || c.email}</span>.</b>
           Хаб повторяет запросы сам; если ошибка не уходит, переподключите консоль на странице <a href="/">Accounts</a>.
@@ -222,7 +226,7 @@
       </p>
     {/each}
     {#if testingExpiry}
-      <p class="console-alert__why">Если доступ слетает каждые 7 дней, приложение Google в режиме «Testing»: Google Cloud → Google Auth Platform → Audience → Publish app. После этого переподключите консоль один раз.</p>
+      <p class="console-alert__why">Если консоль отключилась ровно через 7 дней после подключения — её подключали, пока приложение Google было в режиме «Testing». Проверьте, что оно опубликовано (Google Cloud → Google Auth Platform → Audience: «In Produktion»), и переподключите консоль один раз — после этого доступ бессрочный.</p>
     {/if}
   </div>
 {/if}

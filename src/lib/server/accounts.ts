@@ -8,6 +8,8 @@ export interface AccountRow {
   access_token: string; refresh_token: string; expires_at: number;
   scope: string; status: AccountStatus; last_error: string | null;
   added_at: number; owner_id: string | null;
+  /** Когда консоль подключили в последний раз и когда сменился статус (секунды). */
+  connected_at: number | null; status_at: number | null;
   /** 1 — консоль участвует в отчётах, 0 — выключена галочкой «Использовать». */
   in_use: number;
 }
@@ -27,9 +29,9 @@ export function upsertAccount(db: Db, a: UpsertInput): void {
   db.prepare(
     `
     INSERT INTO google_accounts
-      (id, email, label, access_token, refresh_token, expires_at, scope, status, last_error, added_at, owner_id)
+      (id, email, label, access_token, refresh_token, expires_at, scope, status, last_error, added_at, owner_id, connected_at, status_at)
     VALUES
-      (@id, @email, NULL, @access_token, @refresh_token, @expires_at, @scope, 'active', NULL, @added_at, @owner_id)
+      (@id, @email, NULL, @access_token, @refresh_token, @expires_at, @scope, 'active', NULL, @added_at, @owner_id, @added_at, @added_at)
     ON CONFLICT(id) DO UPDATE SET
       email = excluded.email,
       access_token = excluded.access_token,
@@ -37,7 +39,9 @@ export function upsertAccount(db: Db, a: UpsertInput): void {
       expires_at = excluded.expires_at,
       scope = excluded.scope,
       status = 'active',
-      last_error = NULL
+      last_error = NULL,
+      connected_at = excluded.connected_at,
+      status_at = excluded.status_at
     `
   ).run({ ...a, owner_id: a.owner_id ?? null, added_at: now });
 }
@@ -116,19 +120,19 @@ export function relabelAccount(db: Db, id: string, label: string | null): void {
 
 export function markRevoked(db: Db, id: string, reason: string): void {
   db.prepare(
-    "UPDATE google_accounts SET status = 'revoked', last_error = ? WHERE id = ?"
+    "UPDATE google_accounts SET status = 'revoked', last_error = ?, status_at = CAST(strftime('%s','now') AS INTEGER) WHERE id = ?"
   ).run(reason, id);
 }
 
 export function markError(db: Db, id: string, reason: string): void {
   db.prepare(
-    "UPDATE google_accounts SET status = 'error', last_error = ? WHERE id = ?"
+    "UPDATE google_accounts SET status = 'error', last_error = ?, status_at = CAST(strftime('%s','now') AS INTEGER) WHERE id = ?"
   ).run(reason, id);
 }
 
 export function markActive(db: Db, id: string): void {
   db.prepare(
-    "UPDATE google_accounts SET status = 'active', last_error = NULL WHERE id = ?"
+    "UPDATE google_accounts SET status = 'active', last_error = NULL, status_at = CAST(strftime('%s','now') AS INTEGER) WHERE id = ?"
   ).run(id);
 }
 
