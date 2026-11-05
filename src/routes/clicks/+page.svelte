@@ -57,6 +57,8 @@
   };
 
   // Bing: данные за период, если Bing уже отдал этот период (он опаздывает на 1–3 дня).
+  // Колонки Bing — только когда Bing подключён (ключ на сервере); без ключа их нет.
+  const showBing = $derived(data.bingState !== 'off');
   const bingCovers = $derived(data.bingState === 'ok' && !!data.bingLatest && data.period.startDate <= data.bingLatest);
   const bingOf = (h: string) => (bingCovers ? (data.bing[h] ?? null) : null);
   const bingWhy = (h: string) =>
@@ -202,7 +204,7 @@
       <PeriodNote start={data.period.startDate} end={data.period.endDate} />
       <span class="text-xs text-ink-3">{periodLabel}</span>
       <span class="text-xs text-ink-3">· {fmt(totals.n)} {sitesWord(totals.n)} · показов в Google {fmt(totals.impr)} · кликов из Google {fmt(totals.gsc)}{bingCovers ? ` · кликов из Bing ${fmt(totals.bClicks)}` : ''} · просмотров {fmt(totals.v)} · других кнопок {fmt(totals.b)} · перешли к оплате {fmt(totals.s)}</span>
-      {#if data.bingState === 'off'}<span class="text-xs text-ink-3" title={bingWhy('')}>· Bing не подключён</span>{:else if data.bingState === 'loading'}<span class="text-xs text-ink-3">· Bing загружается</span>{:else if data.bingLatest && data.period.endDate > data.bingLatest}<span class="text-xs text-ink-3" title="Bing выкладывает данные с опозданием на 1–3 дня">· Bing — данные по {fmtDay(data.bingLatest)}</span>{/if}
+      {#if data.bingState === 'loading'}<span class="text-xs text-ink-3">· Bing загружается</span>{:else if data.bingLatest && data.period.endDate > data.bingLatest}<span class="text-xs text-ink-3" title="Bing выкладывает данные с опозданием на 1–3 дня">· Bing — данные по {fmtDay(data.bingLatest)}</span>{/if}
       <label class="ml-auto flex items-center gap-1 text-xs text-ink-2"><input type="checkbox" bind:checked={withLinks} /> показывать и обычные ссылки</label>
     </div>
 
@@ -227,8 +229,10 @@
               <SortTh {sort} k="host" label="Сайт" />
               <SortTh {sort} k="impr" label="Показы в Google" num title="Search Console за тот же период: сколько раз сайт показали в поиске" />
               <SortTh {sort} k="gsc" label="Клики из Google" num title="Search Console за тот же период" />
-              <SortTh {sort} k="bImpr" label="Показы в Bing" num title="Bing Webmaster за тот же период (Bing выкладывает данные с опозданием на 1–3 дня)" />
-              <SortTh {sort} k="bClicks" label="Клики из Bing" num title="Bing Webmaster за тот же период (Bing выкладывает данные с опозданием на 1–3 дня)" />
+              {#if showBing}
+                <SortTh {sort} k="bImpr" label="Показы в Bing" num title="Bing Webmaster за тот же период (Bing выкладывает данные с опозданием на 1–3 дня)" />
+                <SortTh {sort} k="bClicks" label="Клики из Bing" num title="Bing Webmaster за тот же период (Bing выкладывает данные с опозданием на 1–3 дня)" />
+              {/if}
               <SortTh {sort} k="views" label="Просмотры страниц" num title="Сколько раз открыли страницы сайта (счётчик; считается с момента обновления скрипта)" />
               <SortTh {sort} k="avg" label="Среднее время" num title="Сколько в среднем страница была открыта на экране (свёрнутая вкладка не считается)" />
               <SortTh {sort} k="buttons" label="Другие кнопки" num title="Нажатия кнопок и ссылок, после которых заказа ещё нет: «Order coins» в шапке, ссылки на другие сайты" />
@@ -254,8 +258,10 @@
                   <td class="num app-num">{data.noConsole.includes(s.host) ? '—' : fmt(s.impr)}</td>
                   <td class="num app-num">{data.noConsole.includes(s.host) ? '—' : fmt(s.gsc)}</td>
                 {/if}
-                <td class="num app-num" title={s.bImpr === null ? bingWhy(s.host) : ''}>{s.bImpr === null ? '—' : fmt(s.bImpr)}</td>
-                <td class="num app-num" title={s.bClicks === null ? bingWhy(s.host) : ''}>{s.bClicks === null ? '—' : fmt(s.bClicks)}</td>
+                {#if showBing}
+                  <td class="num app-num" title={s.bImpr === null ? bingWhy(s.host) : ''}>{s.bImpr === null ? '—' : fmt(s.bImpr)}</td>
+                  <td class="num app-num" title={s.bClicks === null ? bingWhy(s.host) : ''}>{s.bClicks === null ? '—' : fmt(s.bClicks)}</td>
+                {/if}
                 <td class="num app-num">{fmt(s.views)}</td>
                 <td class="num app-num">{dur(s.avg)}</td>
                 <td class="num app-num">{fmt(s.buttons)}</td>
@@ -269,7 +275,7 @@
                 {@const srcs = sourcesOf(data.clicks.filter((r) => r.host === s.host))}
                 {@const srcTotal = srcs.reduce((a, x) => a + x.n, 0)}
                 <tr class="bg-sunk hover:bg-sunk">
-                  <td colspan="11" class="px-3 py-2">
+                  <td colspan={showBing ? 11 : 9} class="px-3 py-2">
                     <div class="mb-1 text-xs font-semibold text-ink-2">Откуда пришли <span class="font-normal text-ink-3">— входы на сайт; переходы внутри сайта не считаются</span></div>
                     {#if srcs.length}
                       <table class="app-table mb-3 rounded border border-line bg-pane">
@@ -354,8 +360,10 @@
               <td class="whitespace-nowrap">Итого: {fmt(totals.n)} {sitesWord(totals.n)}</td>
               <td class="num app-num">{fmt(totals.impr)}</td>
               <td class="num app-num">{fmt(totals.gsc)}</td>
-              <td class="num app-num" title={bingCovers ? '' : bingWhy('')}>{bingCovers ? fmt(totals.bImpr) : '—'}</td>
-              <td class="num app-num" title={bingCovers ? '' : bingWhy('')}>{bingCovers ? fmt(totals.bClicks) : '—'}</td>
+              {#if showBing}
+                <td class="num app-num" title={bingCovers ? '' : bingWhy('')}>{bingCovers ? fmt(totals.bImpr) : '—'}</td>
+                <td class="num app-num" title={bingCovers ? '' : bingWhy('')}>{bingCovers ? fmt(totals.bClicks) : '—'}</td>
+              {/if}
               <td class="num app-num">{fmt(totals.v)}</td>
               <td class="num app-num">{dur(totals.v ? totals.sec / totals.v : null)}</td>
               <td class="num app-num">{fmt(totals.b)}</td>
