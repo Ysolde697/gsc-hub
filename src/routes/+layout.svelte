@@ -17,7 +17,7 @@
     { href: '/uptime', label: 'Доступность', title: 'Открываются ли сайты и та ли на них страница' },
     { href: '/search', label: 'Поиск ключа', title: 'На каких ваших сайтах и страницах есть ключ и на каком месте' },
     { href: '/groups', label: 'Группы', title: 'Группы сайтов и закупки ссылок' },
-    { href: '/events', label: 'Events', title: 'Склейки доменов и покупки ссылок с датами' },
+    // «Events» убран из меню по просьбе владелицы; страница /events работает по прямой ссылке.
     { href: '/magiclinks', label: 'MagicLinks', title: 'Задания на посты и ссылки: статусы и URL публикаций' },
     { href: '/api', label: 'API', title: 'API-ключи и документация для агентов' },
     { href: '/settings/integrations', label: 'Сервисы', title: 'Внешние сервисы и API-ключи: индексаторы, DataForSEO' },
