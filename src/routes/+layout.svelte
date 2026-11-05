@@ -18,7 +18,7 @@
     { href: '/search', label: 'Поиск ключа', title: 'На каких ваших сайтах и страницах есть ключ и на каком месте' },
     { href: '/groups', label: 'Группы', title: 'Группы сайтов и закупки ссылок' },
     // «Events» убран из меню по просьбе владелицы; страница /events работает по прямой ссылке.
-    { href: '/magiclinks', label: 'MagicLinks', title: 'Задания на посты и ссылки: статусы и URL публикаций' },
+    // «MagicLinks» убран из меню по просьбе владелицы; страница /magiclinks работает по прямой ссылке.
     { href: '/api', label: 'API', title: 'API-ключи и документация для агентов' },
     { href: '/settings/integrations', label: 'Сервисы', title: 'Внешние сервисы и API-ключи: индексаторы, DataForSEO' },
     { href: '/admin/users', label: 'Users' }
