@@ -23,7 +23,16 @@
   // Optional metric chips (CTR / position) — off by default, like the reference UI.
   const METRICS_KEY = 'gsc-hub:metrics';
   let showCtr = $state(false);
-  let showPos = $state(false);
+  // Что рисовать на графиках карточек: всё сразу или одну метрику (клик по
+  // «Клики», «Показы», «Позиция» в карточке или в шапке; повторный клик — снова всё).
+  type ChartMetric = 'all' | 'clicks' | 'impressions' | 'position';
+  const CHART_KEY = 'gsc-hub:dash-chart';
+  let chart = $state<ChartMetric>('all');
+  function setChart(m: ChartMetric) {
+    chart = chart === m ? 'all' : m;
+    try { localStorage.setItem(CHART_KEY, chart); } catch { /* private mode */ }
+  }
+  const shows = (m: Exclude<ChartMetric, 'all'>) => chart === 'all' || chart === m;
 
   // Today is deliberately outside the day ranges: it is still accumulating, so
   // it cannot be compared against whole days without lying about the delta.
@@ -53,9 +62,10 @@
     try {
       const raw = localStorage.getItem(FAVS_KEY);
       if (raw) favs = new Set(JSON.parse(raw) as string[]);
-      const m = JSON.parse(localStorage.getItem(METRICS_KEY) ?? '{}') as { ctr?: boolean; pos?: boolean };
+      const m = JSON.parse(localStorage.getItem(METRICS_KEY) ?? '{}') as { ctr?: boolean };
       showCtr = m.ctr === true;
-      showPos = m.pos === true;
+      const c = localStorage.getItem(CHART_KEY);
+      if (c === 'clicks' || c === 'impressions' || c === 'position') chart = c;
     } catch {
       // corrupted prefs are not worth a broken dashboard
     }
@@ -95,10 +105,9 @@
     }
   }
 
-  function toggleMetric(m: 'ctr' | 'pos') {
+  function toggleMetric(m: 'ctr') {
     if (m === 'ctr') showCtr = !showCtr;
-    else showPos = !showPos;
-    try { localStorage.setItem(METRICS_KEY, JSON.stringify({ ctr: showCtr, pos: showPos })); } catch { /* ignore */ }
+    try { localStorage.setItem(METRICS_KEY, JSON.stringify({ ctr: showCtr })); } catch { /* ignore */ }
   }
 
   const visibleEntries = $derived(
@@ -135,6 +144,30 @@
   function pctDelta(cur: number, prev: number): number | null {
     if (!prev) return null;
     return Math.round(((cur - prev) / prev) * 100);
+  }
+
+  // Позиция: на сколько мест сдвинулась к прошлому периоду (плюс — стала выше).
+  function posDelta(cur: number, prev: number): number | null {
+    if (!cur || !prev) return null;
+    return Math.round((prev - cur) * 10) / 10;
+  }
+
+  // Позиция на графике: лучшее место — наверху; дни без показов — разрыв.
+  function posPath(rows: DailyRow[]): string {
+    const vals = rows.filter((r) => r.impressions > 0 && r.position > 0).map((r) => r.position);
+    if (!vals.length) return '';
+    const lo = Math.min(...vals), hi = Math.max(...vals);
+    const yTop = CHART_H * 0.08, yBottom = CHART_H * 0.92;
+    const yOf = (v: number) => (hi === lo ? (yTop + yBottom) / 2 : yTop + ((v - lo) / (hi - lo)) * (yBottom - yTop));
+    const step = rows.length > 1 ? CHART_W / (rows.length - 1) : 0;
+    let d = '';
+    let open = false;
+    rows.forEach((r, i) => {
+      if (!(r.impressions > 0 && r.position > 0)) { open = false; return; }
+      d += `${open ? ' L' : ' M'}${(i * step).toFixed(2)},${yOf(r.position).toFixed(2)}`;
+      open = true;
+    });
+    return d.trim();
   }
 
   // ── Chart: dual-metric sparkline, each series normalized to its own range so
@@ -221,18 +254,41 @@
   </div>
 {/snippet}
 
+{#snippet metricToggle(m: 'clicks' | 'impressions' | 'position', label: string, value: string, d: number | null, kind: '%' | 'pos')}
+  {@const solo = chart === m}
+  {@const faded = chart !== 'all' && !solo}
+  <button
+    type="button"
+    class="flex min-w-0 flex-col items-start rounded px-1 py-0.5 text-left transition-colors hover:bg-sunk {solo ? 'bg-acc-t' : ''} {faded ? 'opacity-50' : ''}"
+    title={solo ? 'Показать на графике всё' : `Оставить на графике только: ${label.toLowerCase()}`}
+    onclick={() => setChart(m)}
+  >
+    <span class="flex items-center gap-1 text-[10px] font-medium uppercase tracking-[0.05em] text-ink-3">
+      <i class="inline-block h-0.5 w-2.5 rounded-full {m === 'position' ? 'bg-ink' : ''}" style:background={m === 'clicks' ? SERIES.clicks : m === 'impressions' ? SERIES.impr : undefined}></i>{label}
+    </span>
+    <span class="pii app-num text-[13px] font-semibold text-ink">{value}</span>
+    {#if data.comparable && d !== null && d !== 0}
+      {#if kind === 'pos'}
+        <span class="pii chip {d > 0 ? 'chip-up' : 'chip-dn'}" title="К прошлому периоду: {d > 0 ? 'выше' : 'ниже'} на {Math.abs(d)}">{d > 0 ? '▲' : '▼'}{Math.abs(d)}</span>
+      {:else}
+        <span class="pii chip {d > 0 ? 'chip-up' : 'chip-dn'}" title="К прошлому периоду той же длины">{d > 0 ? '+' : '−'}{Math.abs(d)}%</span>
+      {/if}
+    {:else if data.comparable}
+      <span class="text-[10px] text-ink-4" title="К прошлому периоду">без изменений</span>
+    {/if}
+  </button>
+{/snippet}
+
 {#snippet siteCard(e: Entry, uid: string, dim = false)}
   {@const dC = pctDelta(e.currentTotals.clicks, e.previousTotals.clicks)}
   {@const dI = pctDelta(e.currentTotals.impressions, e.previousTotals.impressions)}
-  {@const falling = data.comparable && ((dC ?? 0) < 0 || (dI ?? 0) < 0)}
-  {@const worst = Math.max(-(dC ?? 0), -(dI ?? 0), 0)}
+  {@const dP = posDelta(e.currentTotals.position, e.previousTotals.position)}
   {@const isFav = favs.has(keyOf(e))}
   {@const isHidden = hidden.has(keyOf(e))}
   {@const market = marketOf(e.siteUrl)}
   {@const domain = siteDomain(e.siteUrl)}
   <article
     class="pane flex min-w-0 cursor-pointer flex-col transition-colors hover:border-ink-4 {dim ? 'opacity-60' : ''}"
-    style:border-color={falling ? `rgb(var(--dn) / ${Math.min(0.75, 0.25 + (worst / 100) * 0.5)})` : undefined}
     role="link"
     tabindex="0"
     onclick={() => goto(siteDetailHref(e))}
@@ -263,11 +319,14 @@
           <span class="pii truncate">{e.accountLabel ?? e.accountEmail}</span>
         </div>
       </div>
-      <div class="flex shrink-0 flex-col items-end gap-0.5">
-        <span class="pii font-mono text-[14px] font-semibold tabular-nums text-ink">{fmtNum(e.currentTotals.clicks)}</span>
-        {@render deltaChip(dC)}
-      </div>
     </header>
+
+    <!-- Клики, показы, позиция с изменением к прошлому периоду; клик — только эта метрика на графике -->
+    <div class="mt-2 grid grid-cols-3 gap-1 px-3" role="presentation" onclick={(ev) => ev.stopPropagation()} onkeydown={(ev) => ev.stopPropagation()}>
+      {@render metricToggle('clicks', 'Клики', fmtNum(e.currentTotals.clicks), dC, '%')}
+      {@render metricToggle('impressions', 'Показы', fmtK(e.currentTotals.impressions), dI, '%')}
+      {@render metricToggle('position', 'Позиция', e.currentTotals.position ? fmtPos(e.currentTotals.position) : '—', dP, 'pos')}
+    </div>
 
     <!-- Chart: clicks line over a faint area, previous period dashed, impressions thin gray -->
     {#if e.error}
@@ -281,12 +340,16 @@
           </linearGradient>
         </defs>
         {#if data.comparable && e.previous.length > 0}
-          <path d={seriesPath(e.previous, 'impressions')} fill="none" stroke={SERIES.prev} stroke-width="1" stroke-opacity="0.6" stroke-dasharray="3 3" vector-effect="non-scaling-stroke" />
-          <path d={seriesPath(e.previous, 'clicks')} fill="none" stroke={SERIES.prev} stroke-width="1.25" stroke-dasharray="4 3" vector-effect="non-scaling-stroke" />
+          {#if shows('impressions')}<path d={seriesPath(e.previous, 'impressions')} fill="none" stroke={SERIES.prev} stroke-width="1" stroke-opacity="0.6" stroke-dasharray="3 3" vector-effect="non-scaling-stroke" />{/if}
+          {#if shows('clicks')}<path d={seriesPath(e.previous, 'clicks')} fill="none" stroke={SERIES.prev} stroke-width="1.25" stroke-dasharray="4 3" vector-effect="non-scaling-stroke" />{/if}
+          {#if chart === 'position'}<path d={posPath(e.previous)} fill="none" stroke={SERIES.prev} stroke-width="1.25" stroke-dasharray="4 3" vector-effect="non-scaling-stroke" />{/if}
         {/if}
-        <path d={seriesPath(e.current, 'impressions')} fill="none" stroke={SERIES.impr} stroke-width="1" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" />
-        <path d={areaPath(e.current, 'clicks')} fill="url(#gc-{uid})" />
-        <path d={seriesPath(e.current, 'clicks')} fill="none" stroke={SERIES.clicks} stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" />
+        {#if shows('impressions')}<path d={seriesPath(e.current, 'impressions')} fill="none" stroke={SERIES.impr} stroke-width="1" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" />{/if}
+        {#if shows('clicks')}
+          <path d={areaPath(e.current, 'clicks')} fill="url(#gc-{uid})" />
+          <path d={seriesPath(e.current, 'clicks')} fill="none" stroke={SERIES.clicks} stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" />
+        {/if}
+        {#if shows('position')}<path class="text-ink" d={posPath(e.current)} fill="none" stroke="currentColor" stroke-width={chart === 'position' ? 1.6 : 1.1} stroke-opacity={chart === 'position' ? 1 : 0.7} stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" />{/if}
         {#each e.events as ev (ev.id)}
           {@const ex = eventX(e.current, ev.date)}
           {#if ex !== null}
@@ -306,12 +369,8 @@
       role="presentation"
     >
       <div class="flex min-w-0 flex-wrap items-end gap-x-3 gap-y-1">
-        {@render metricCell('Impr', fmtK(e.currentTotals.impressions), dI)}
         {#if showCtr}
           {@render metricCell('CTR', fmtCtr(e.currentTotals.ctr), pctDelta(e.currentTotals.ctr, e.previousTotals.ctr))}
-        {/if}
-        {#if showPos}
-          {@render metricCell('Pos', fmtPos(e.currentTotals.position), pctDelta(e.currentTotals.position, e.previousTotals.position), true)}
         {/if}
       </div>
       <div class="-mr-1.5 flex shrink-0 items-center">
@@ -377,7 +436,13 @@
       <div class="app-segmented">
         <span class="app-segmented-label">Metrics</span>
         <button type="button" class:is-active={showCtr} onclick={() => toggleMetric('ctr')}>CTR</button>
-        <button type="button" class:is-active={showPos} onclick={() => toggleMetric('pos')}>Pos</button>
+      </div>
+      <div class="app-segmented" title="Что показывать на графиках карточек">
+        <span class="app-segmented-label">График</span>
+        <button type="button" class:is-active={chart === 'all'} onclick={() => setChart('all')}>Всё</button>
+        <button type="button" class:is-active={chart === 'clicks'} onclick={() => setChart('clicks')}>Клики</button>
+        <button type="button" class:is-active={chart === 'impressions'} onclick={() => setChart('impressions')}>Показы</button>
+        <button type="button" class:is-active={chart === 'position'} onclick={() => setChart('position')}>Позиция</button>
       </div>
       <div class="app-segmented">
         <span class="app-segmented-label">Cols</span>
