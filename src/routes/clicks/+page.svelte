@@ -49,6 +49,11 @@
       const row = rows.get(src.key) ?? rows.set(src.key, { ...src, n: 0, pay: 0 }).get(src.key)!;
       row.pay += c.n;
     }
+    // Переходы к оплате без записанного источника (в том числе до того, как
+    // панель начала их записывать) — чтобы таблица сходилась с колонкой сайта.
+    const total = data.clicks.reduce((a, r) => a + (r.host === host && r.kind === 'submit' ? r.n : 0), 0);
+    const attributed = [...rows.values()].reduce((a, r) => a + r.pay, 0);
+    unknownPay = Math.max(unknownPay, total - attributed);
     return { rows: [...rows.values()].sort((a, b) => b.n - a.n || b.pay - a.pay), unknownPay };
   }
   const allSourcesTotal = $derived(allSources.reduce((a, x) => a + x.n, 0));
@@ -341,7 +346,7 @@
                           {#if sr.unknownPay}
                             <tr>
                               <td class="font-medium text-ink-3">Источник неизвестен</td>
-                              <td class="text-xs text-ink-3" colspan="3" title="Вход этого посетителя не найден: он пришёл больше 30 минут назад, счётчик сайта не передаёт источник или переход был до 06.11.2026">переход к оплате, а откуда пришёл — не видно</td>
+                              <td class="text-xs text-ink-3" colspan="3" title="Источник переходов к оплате панель записывает с 06.11.2026 15:07. Неизвестен он и тогда, когда вход посетителя был больше 30 минут назад, счётчик сайта не передаёт источник или на страницу заказа зашли напрямую">откуда пришли, не видно: переход был до 06.11 15:07 или вход не найден</td>
                               <td class="num app-num font-semibold">{fmt(sr.unknownPay)}</td>
                               <td class="num">—</td>
                             </tr>
