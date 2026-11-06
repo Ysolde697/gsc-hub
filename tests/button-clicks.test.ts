@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openDb, type Db } from '../src/lib/server/db';
-import { parseClick, recordClick, clicksForRange, allowClick, lastSeen, parseTime, recordTime, timeForRange, pageSnippet, workerScript, parseWorkerEvent, isBotUA, countedHosts } from '../src/lib/server/button-clicks';
+import { parseClick, recordClick, clicksForRange, allowClick, lastSeen, parseTime, recordTime, timeForRange, pageSnippet, workerScript, parseWorkerEvent, isBotUA, countedHosts, rememberEntry, entrySource, recordCheckoutSource, checkoutSourcesForRange } from '../src/lib/server/button-clicks';
 import { isPublicPath } from '../src/lib/server/guard';
 
 const q = (o: Record<string, string>) => new URLSearchParams(o);
@@ -41,6 +41,22 @@ describe('recordClick / clicksForRange', () => {
     recordClick(db, { host: 'a.com', page: '/', kind: 'view', label: '(без текста)', target: '' }, '2026-10-28');
     recordTime(db, { host: 'b.com', page: '/', seconds: 5 }, '2026-10-29');
     expect([...countedHosts(db)].sort()).toEqual(['a.com', 'b.com']);
+  });
+  it('переход к оплате записывается на источник входа того же посетителя (30 минут)', () => {
+    const t0 = Date.parse('2026-11-06T10:00:00Z');
+    rememberEntry('ip1', 'a.com', 'utm:chatgpt.com', t0);
+    rememberEntry('ip1', 'a.com', '(internal)', t0 + 60_000); // переход внутри сайта не перебивает
+    expect(entrySource('ip1', 'a.com', t0 + 10 * 60_000)).toBe('utm:chatgpt.com');
+    expect(entrySource('ip1', 'b.com', t0 + 10 * 60_000)).toBe('');
+    expect(entrySource('ip1', 'a.com', t0 + 31 * 60_000)).toBe('');
+    expect(entrySource('worker', 'a.com', t0)).toBe('');
+    recordCheckoutSource(db, 'a.com', 'utm:chatgpt.com', '2026-11-06');
+    recordCheckoutSource(db, 'a.com', 'utm:chatgpt.com', '2026-11-06');
+    recordCheckoutSource(db, 'a.com', '', '2026-11-06');
+    expect(checkoutSourcesForRange(db, '2026-11-01', '2026-11-06').sort((x, y) => x.source.localeCompare(y.source))).toEqual([
+      { host: 'a.com', source: '(unknown)', n: 1 },
+      { host: 'a.com', source: 'utm:chatgpt.com', n: 2 }
+    ]);
   });
   it('суммирует по дням', () => {
     const e = { host: 'fccoins.co.uk', page: '/', kind: 'submit' as const, label: 'Go to the checkout', target: '/order/' };

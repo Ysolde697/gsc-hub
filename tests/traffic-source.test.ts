@@ -23,6 +23,8 @@ describe('traffic source', () => {
     expect(sourceOf('forum.example.org')).toMatchObject({ key: 'forum.example.org', group: 'site' });
     expect(sourceOf('(direct)')).toMatchObject({ group: 'direct' });
     expect(sourceOf('utm:newsletter')).toMatchObject({ group: 'tag', label: 'Метка newsletter' });
+    expect(sourceOf('utm:chatgpt.com')).toMatchObject({ key: 'ChatGPT', group: 'ai' });
+    expect(sourceOf('utm:perplexity')).toMatchObject({ key: 'Perplexity', group: 'ai' });
   });
 
   it('переход внутри сайта и старый код — не входы', () => {

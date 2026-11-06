@@ -5,7 +5,7 @@ import { reportPeriod } from '$lib/server/report-period';
 import { db } from '$lib/server/db';
 import { requireAdmin } from '$lib/server/guard';
 import { parsePeriod, sitesForPeriod } from '$lib/server/site-keys';
-import { clicksForRange, lastSeen, normHost, timeForRange, workerScript } from '$lib/server/button-clicks';
+import { checkoutSourcesForRange, clicksForRange, lastSeen, normHost, timeForRange, workerScript } from '$lib/server/button-clicks';
 import { siteHostname } from '$lib/utils/url-filters';
 import { listAllKnownSites } from '$lib/server/google';
 import { activeGroupHosts } from '$lib/server/site-groups';
@@ -83,6 +83,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     hosts: [...hosts].sort(),
     clicks: clicks.filter((r) => mine(r.host)),
     time: time.filter((t) => mine(t.host)),
+    checkoutSources: checkoutSourcesForRange(db(), period.startDate, period.endDate).filter((r) => mine(r.host)),
     gsc,
     gscImpr, gscErr, noConsole, bing, bingState, bingLatest, lastSeen: seen, errors, workerCode: workerScript(url.origin), counterKey: ensureCounterKey(db()), keys: listCounterKeys(db()) };
 };

@@ -286,6 +286,15 @@ CREATE TABLE IF NOT EXISTS user_selection (
   PRIMARY KEY (user_id, kind)
 );
 
+-- Переходы к оплате по источнику входа посетителя (Google, ChatGPT, прямой…).
+CREATE TABLE IF NOT EXISTS checkout_sources (
+  day    TEXT NOT NULL,
+  host   TEXT NOT NULL,
+  source TEXT NOT NULL,
+  n      INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (day, host, source)
+);
+
 -- Даты доменов: из реестра (RDAP) и вписанные вручную (важнее реестра).
 CREATE TABLE IF NOT EXISTS domain_dates (
   host              TEXT PRIMARY KEY,

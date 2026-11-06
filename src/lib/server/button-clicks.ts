@@ -101,6 +101,40 @@ export function countedHosts(db: Db): Set<string> {
   return new Set(rows.map((r) => r.host));
 }
 
+// ─── Переход к оплате по источнику ──────────────────────────────────────────
+// Сайт посетителю ничего не запоминает, поэтому источник перехода к оплате
+// панель берёт у входа того же посетителя (тот же адрес от Worker'а) на этот
+// же сайт за последние 30 минут. Связка живёт только в памяти панели.
+const ENTRY_MS = 30 * 60_000;
+const entries = new Map<string, { src: string; at: number }>();
+
+/** Просмотр с источником (не переход внутри сайта) — запомнить, откуда пришёл. */
+export function rememberEntry(ip: string, host: string, target: string, now: number = Date.now()): void {
+  if (!ip || ip === 'worker' || !target || target === '(internal)') return;
+  entries.set(`${ip}\n${host}`, { src: target, at: now });
+  if (entries.size > 50_000) for (const [k, v] of entries) if (now - v.at > ENTRY_MS) entries.delete(k);
+}
+
+/** Откуда пришёл посетитель, который сейчас перешёл к оплате; '' — неизвестно. */
+export function entrySource(ip: string, host: string, now: number = Date.now()): string {
+  if (!ip || ip === 'worker') return '';
+  const e = entries.get(`${ip}\n${host}`);
+  return e && now - e.at < ENTRY_MS ? e.src : '';
+}
+
+export function recordCheckoutSource(db: Db, host: string, source: string, day: string = localToday()): void {
+  db.prepare(
+    `INSERT INTO checkout_sources (day, host, source, n) VALUES (?, ?, ?, 1)
+     ON CONFLICT(day, host, source) DO UPDATE SET n = n + 1`
+  ).run(day, host, source || '(unknown)');
+}
+
+export function checkoutSourcesForRange(db: Db, startDate: string, endDate: string): { host: string; source: string; n: number }[] {
+  return db
+    .prepare('SELECT host, source, SUM(n) AS n FROM checkout_sources WHERE day >= ? AND day <= ? GROUP BY host, source')
+    .all(startDate, endDate) as { host: string; source: string; n: number }[];
+}
+
 /** Когда от сайта последний раз приходили данные — проверка установки. */
 export function lastSeen(db: Db): Record<string, string> {
   const rows = db.prepare('SELECT host, MAX(day) AS day FROM button_clicks GROUP BY host').all() as { host: string; day: string }[];

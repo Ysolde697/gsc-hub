@@ -37,6 +37,20 @@
     return [...m.values()].sort((a, b) => b.n - a.n);
   }
   const allSources = $derived(sourcesOf(data.clicks));
+  // Подробно по сайту: входы и переходы к оплате по каждому источнику.
+  type SrcRow = Src & { pay: number };
+  function sourceRows(host: string): { rows: SrcRow[]; unknownPay: number } {
+    const rows = new Map<string, SrcRow>(sourcesOf(data.clicks.filter((r) => r.host === host)).map((x) => [x.key, { ...x, pay: 0 }]));
+    let unknownPay = 0;
+    for (const c of data.checkoutSources) {
+      if (c.host !== host) continue;
+      const src = c.source === '(unknown)' ? null : sourceOf(c.source);
+      if (!src) { unknownPay += c.n; continue; }
+      const row = rows.get(src.key) ?? rows.set(src.key, { ...src, n: 0, pay: 0 }).get(src.key)!;
+      row.pay += c.n;
+    }
+    return { rows: [...rows.values()].sort((a, b) => b.n - a.n || b.pay - a.pay), unknownPay };
+  }
   const allSourcesTotal = $derived(allSources.reduce((a, x) => a + x.n, 0));
   const groupTotals = $derived.by(() => {
     const g = new Map<SourceGroup, number>();
@@ -66,12 +80,32 @@
     : data.bingState === 'loading' ? 'Данные Bing загружаются — обновите страницу через минуту'
     : !bingCovers ? `Bing отдаёт данные с опозданием на 1–3 дня; последний день у Bing — ${data.bingLatest ? fmtDay(data.bingLatest) : '—'}`
     : !data.bing[h] ? 'Сайта нет в Bing Webmaster' : '';
-  type Site = { host: string; impr: number; gsc: number; bImpr: number | null; bClicks: number | null; views: number; seconds: number; avg: number | null; buttons: number; submits: number; rateSubmit: number | null; rateButton: number | null };
+  // Входы по источникам (счётчик на сайте): Google, Bing, другие поисковики,
+  // ИИ-помощники, прямые заходы, прочее (соцсети, другие сайты, метки).
+  // null — счётчик сайта источник не передаёт.
+  type Src6 = { g: number; b: number; s: number; ai: number; d: number; o: number };
+  const SRC_COLS: [keyof Src6, string, string][] = [
+    ['g', 'Из Google', 'Входы на сайт из поиска Google — по счётчику на сайте (переходы внутри сайта не считаются)'],
+    ['b', 'Из Bing', 'Входы на сайт из Bing — по счётчику на сайте'],
+    ['s', 'Др. поиск', 'Входы из других поисковиков: Яндекс, DuckDuckGo, Yahoo, Ecosia…'],
+    ['ai', 'Из ИИ', 'Входы из ИИ-помощников: ChatGPT, Perplexity, Gemini, Copilot, Claude (в том числе по их метке utm_source)'],
+    ['d', 'Прямые', 'Без адреса, откуда пришли: набрали адрес, закладка, приложение, мессенджер'],
+    ['o', 'Прочее', 'Соцсети, другие сайты и ссылки с метками utm']
+  ];
+  type Site = { host: string; impr: number; gsc: number; src: Src6 | null; bImpr: number | null; bClicks: number | null; views: number; seconds: number; avg: number | null; buttons: number; submits: number; rateSubmit: number | null; rateButton: number | null };
   const sitesRaw = $derived.by(() => {
     const m = new Map<string, Site>();
-    const get = (h: string) => m.get(h) ?? (m.set(h, { host: h, impr: data.gscImpr[h] ?? 0, gsc: data.gsc[h] ?? 0, bImpr: bingOf(h)?.impressions ?? null, bClicks: bingOf(h)?.clicks ?? null, views: 0, seconds: 0, avg: null, buttons: 0, submits: 0, rateSubmit: null, rateButton: null }), m.get(h)!);
+    const get = (h: string) => m.get(h) ?? (m.set(h, { host: h, impr: data.gscImpr[h] ?? 0, gsc: data.gsc[h] ?? 0, src: null, bImpr: bingOf(h)?.impressions ?? null, bClicks: bingOf(h)?.clicks ?? null, views: 0, seconds: 0, avg: null, buttons: 0, submits: 0, rateSubmit: null, rateButton: null }), m.get(h)!);
     for (const r of data.clicks) {
       const s = get(r.host);
+      if (r.kind === 'view' && r.target !== '') {
+        const src = sourceOf(r.target);
+        s.src ??= { g: 0, b: 0, s: 0, ai: 0, d: 0, o: 0 };
+        if (src) {
+          const col: keyof Src6 = src.key === 'Google' ? 'g' : src.key === 'Bing' ? 'b' : src.group === 'search' ? 's' : src.group === 'ai' ? 'ai' : src.group === 'direct' ? 'd' : 'o';
+          s.src[col] += r.n;
+        }
+      }
       if (r.kind === 'view') s.views += r.n;
       else if (r.kind === 'submit') s.submits += r.n;
       else if (r.kind === 'button' || r.kind === 'out') s.buttons += r.n;
@@ -85,10 +119,10 @@
     }
     return [...m.values()];
   });
-  type K = 'host' | 'impr' | 'gsc' | 'bImpr' | 'bClicks' | 'views' | 'avg' | 'buttons' | 'submits' | 'rateButton' | 'rateSubmit';
+  type K = 'host' | 'impr' | 'gsc' | 'bImpr' | 'bClicks' | 'views' | 'src_g' | 'src_b' | 'src_s' | 'src_ai' | 'src_d' | 'src_o' | 'avg' | 'buttons' | 'submits' | 'rateButton' | 'rateSubmit';
   // По умолчанию — по кликам из Google, от больших к меньшим.
-  const sort = new TableSort<K>('gsc', -1, ['impr', 'gsc', 'bImpr', 'bClicks', 'views', 'avg', 'buttons', 'submits', 'rateButton', 'rateSubmit']);
-  const sites = $derived(sort.apply(sitesRaw, (s, k) => s[k]));
+  const sort = new TableSort<K>('gsc', -1, ['impr', 'gsc', 'bImpr', 'bClicks', 'views', 'src_g', 'src_b', 'src_s', 'src_ai', 'src_d', 'src_o', 'avg', 'buttons', 'submits', 'rateButton', 'rateSubmit']);
+  const sites = $derived(sort.apply(sitesRaw, (s, k) => (k.startsWith('src_') ? (s.src ? s.src[k.slice(4) as keyof Src6] : null) : s[k as Exclude<K, `src_${string}`>])));
 
   type DK = 'label' | 'kind' | 'page' | 'target' | 'n';
   const dsort = new TableSort<DK>('n', -1, ['n']);
@@ -125,8 +159,12 @@
   // Итого по всем сайтам в таблице: суммы, а среднее время и доли — по всем вместе.
   const totals = $derived(
     sitesRaw.reduce(
-      (a, s) => ({ n: a.n + 1, impr: a.impr + s.impr, gsc: a.gsc + s.gsc, bImpr: a.bImpr + (s.bImpr ?? 0), bClicks: a.bClicks + (s.bClicks ?? 0), v: a.v + s.views, sec: a.sec + s.seconds, b: a.b + s.buttons, s: a.s + s.submits }),
-      { n: 0, impr: 0, gsc: 0, bImpr: 0, bClicks: 0, v: 0, sec: 0, b: 0, s: 0 }
+      (a, s) => ({
+        n: a.n + 1, impr: a.impr + s.impr, gsc: a.gsc + s.gsc, bImpr: a.bImpr + (s.bImpr ?? 0), bClicks: a.bClicks + (s.bClicks ?? 0), v: a.v + s.views, sec: a.sec + s.seconds, b: a.b + s.buttons, s: a.s + s.submits,
+        src: { g: a.src.g + (s.src?.g ?? 0), b: a.src.b + (s.src?.b ?? 0), s: a.src.s + (s.src?.s ?? 0), ai: a.src.ai + (s.src?.ai ?? 0), d: a.src.d + (s.src?.d ?? 0), o: a.src.o + (s.src?.o ?? 0) },
+        withSrc: a.withSrc + (s.src ? 1 : 0)
+      }),
+      { n: 0, impr: 0, gsc: 0, bImpr: 0, bClicks: 0, v: 0, sec: 0, b: 0, s: 0, src: { g: 0, b: 0, s: 0, ai: 0, d: 0, o: 0 } as Src6, withSrc: 0 }
     )
   );
   const sitesWord = (n: number) => {
@@ -234,6 +272,7 @@
                 <SortTh {sort} k="bClicks" label="Клики из Bing" num title="Bing Webmaster за тот же период (Bing выкладывает данные с опозданием на 1–3 дня)" />
               {/if}
               <SortTh {sort} k="views" label="Просмотры страниц" num title="Сколько раз открыли страницы сайта (счётчик; считается с момента обновления скрипта)" />
+              {#each SRC_COLS as [c, label, title] (c)}<SortTh {sort} k={`src_${c}` as K} {label} num {title} />{/each}
               <SortTh {sort} k="avg" label="Среднее время" num title="Сколько в среднем страница была открыта на экране (свёрнутая вкладка не считается)" />
               <SortTh {sort} k="buttons" label="Другие кнопки" num title="Нажатия кнопок и ссылок, после которых заказа ещё нет: «Order coins» в шапке, ссылки на другие сайты" />
               <SortTh {sort} k="rateButton" label="% от просмотров" num title="Другие кнопки / просмотры страниц" />
@@ -264,6 +303,10 @@
                   <td class="num app-num" title={s.bClicks === null ? bingWhy(s.host) : ''}>{s.bClicks === null ? '—' : fmt(s.bClicks)}</td>
                 {/if}
                 <td class="num app-num">{fmt(s.views)}</td>
+                {#each SRC_COLS as [c] (c)}
+                  {#if s.src}<td class="num app-num {s.src[c] ? '' : 'text-ink-4'}">{fmt(s.src[c])}</td>
+                  {:else}<td class="num text-ink-4" title="Счётчик этого сайта не передаёт, откуда пришёл посетитель">—</td>{/if}
+                {/each}
                 <td class="num app-num">{dur(s.avg)}</td>
                 <td class="num app-num">{fmt(s.buttons)}</td>
                 <td class="num app-num">{pct(s.rateButton)}</td>
@@ -273,15 +316,16 @@
               {#if open.has(s.host)}
                 {@const list = detail(s.host)}
                 {@const pages = pagesOf(s.host)}
-                {@const srcs = sourcesOf(data.clicks.filter((r) => r.host === s.host))}
+                {@const sr = sourceRows(s.host)}
+                {@const srcs = sr.rows}
                 {@const srcTotal = srcs.reduce((a, x) => a + x.n, 0)}
                 <tr class="bg-sunk hover:bg-sunk">
-                  <td colspan={showBing ? 11 : 9} class="px-3 py-2">
-                    <div class="mb-1 text-xs font-semibold text-ink-2">Откуда пришли <span class="font-normal text-ink-3">— входы на сайт; переходы внутри сайта не считаются</span></div>
-                    {#if srcs.length}
+                  <td colspan={(showBing ? 11 : 9) + SRC_COLS.length} class="px-3 py-2">
+                    <div class="mb-1 text-xs font-semibold text-ink-2">Откуда пришли <span class="font-normal text-ink-3">— входы на сайт (переходы внутри сайта не считаются) и сколько из них перешли к оплате</span></div>
+                    {#if srcs.length || sr.unknownPay}
                       <table class="app-table mb-3 rounded border border-line bg-pane">
                         <thead>
-                          <tr><th>Источник</th><th>Что это</th><th class="num">Входов</th><th class="num">Доля</th></tr>
+                          <tr><th>Источник</th><th>Что это</th><th class="num">Входов</th><th class="num">Доля</th><th class="num" title="Переходы к оплате посетителей, пришедших из этого источника (тот же посетитель в течение 30 минут после входа)">Перешли к оплате</th><th class="num">% от входов</th></tr>
                         </thead>
                         <tbody>
                           {#each srcs as x (x.key)}
@@ -290,8 +334,18 @@
                               <td class="text-xs text-ink-3">{GROUP_LABEL[x.group]}</td>
                               <td class="num app-num">{fmt(x.n)}</td>
                               <td class="num app-num">{share(x.n, srcTotal)}</td>
+                              <td class="num app-num {x.pay ? 'font-semibold' : 'text-ink-4'}">{fmt(x.pay)}</td>
+                              <td class="num app-num">{x.n ? share(x.pay, x.n) : '—'}</td>
                             </tr>
                           {/each}
+                          {#if sr.unknownPay}
+                            <tr>
+                              <td class="font-medium text-ink-3">Источник неизвестен</td>
+                              <td class="text-xs text-ink-3" colspan="3" title="Вход этого посетителя не найден: он пришёл больше 30 минут назад, счётчик сайта не передаёт источник или переход был до 06.11.2026">переход к оплате, а откуда пришёл — не видно</td>
+                              <td class="num app-num font-semibold">{fmt(sr.unknownPay)}</td>
+                              <td class="num">—</td>
+                            </tr>
+                          {/if}
                         </tbody>
                       </table>
                     {:else if sendsSources(s.host)}
@@ -366,6 +420,7 @@
                 <td class="num app-num" title={bingCovers ? '' : bingWhy('')}>{bingCovers ? fmt(totals.bClicks) : '—'}</td>
               {/if}
               <td class="num app-num">{fmt(totals.v)}</td>
+              {#each SRC_COLS as [c] (c)}<td class="num app-num" title={totals.withSrc < totals.n ? `Только сайты, чей счётчик передаёт источник: ${totals.withSrc} из ${totals.n}` : ''}>{totals.withSrc ? fmt(totals.src[c]) : '—'}</td>{/each}
               <td class="num app-num">{dur(totals.v ? totals.sec / totals.v : null)}</td>
               <td class="num app-num">{fmt(totals.b)}</td>
               <td class="num app-num">{pct(totals.v ? totals.b / totals.v : null)}</td>

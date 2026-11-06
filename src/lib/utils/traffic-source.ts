@@ -2,7 +2,8 @@
 // понятный источник. Счётчик пишет его в target у события «view»:
 //   '(direct)'   — пришёл без адреса: набрал сам, закладка, приложение, мессенджер;
 //   '(internal)' — переход внутри сайта, обновление, «Назад» — это не новый вход;
-//   'utm:<x>'    — пришёл без адреса, но с меткой ?utm_source=<x>;
+//   'utm:<x>'    — пришёл без адреса, но с меткой ?utm_source=<x> (метка
+//                  известного источника, например chatgpt.com, считается им);
 //   'google.com' и т.п. — домен сайта, откуда пришёл;
 //   ''           — старый код счётчика, источник не передавал.
 
@@ -79,7 +80,14 @@ export function storedSource(r: string): string {
 export function sourceOf(target: string): TrafficSource | null {
   if (!target || target === '(internal)') return null;
   if (target === '(direct)') return { key: '(direct)', label: 'Прямой заход', group: 'direct' };
-  if (target.startsWith('utm:')) return { key: target, label: `Метка ${target.slice(4)}`, group: 'tag' };
+  if (target.startsWith('utm:')) {
+    // ChatGPT, Perplexity и др. сами ставят метку на ссылки в ответах
+    // (utm_source=chatgpt.com), а адрес, откуда пришли, часто не передают.
+    const tag = target.slice(4);
+    const byTag = KNOWN.find((k) => k.test(tag) || k.test(`${tag}.com`) || k.test(`${tag}.ai`));
+    if (byTag) return { key: byTag.label, label: byTag.label, group: byTag.group };
+    return { key: target, label: `Метка ${tag}`, group: 'tag' };
+  }
   if (target === '(other)') return { key: '(other)', label: 'Другие сайты', group: 'site' };
   const known = KNOWN.find((k) => k.test(target));
   if (known) return { key: known.label, label: known.label, group: known.group };
