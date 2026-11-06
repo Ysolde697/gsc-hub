@@ -9,6 +9,7 @@
   import GroupBar from '$lib/components/GroupBar.svelte';
   import { TableSort } from '$lib/table-sort.svelte';
   import { loadGroupItems } from '$lib/group-items.svelte';
+  import { siteHref } from '$lib/utils/site';
 
   let { data } = $props();
   onMount(() => { loadGroupItems(); });
@@ -84,6 +85,7 @@
                   <span class="flex items-center gap-1">
                     <svg viewBox="0 0 16 16" class="h-3 w-3 shrink-0 text-ink-4 transition-transform {open.has(k) ? 'rotate-90' : ''}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5"/></svg>
                     {display(s.siteUrl)}
+                    <a class="ml-0.5 inline-flex rounded p-0.5 text-ink-4 hover:bg-sunk hover:text-acc" href={siteHref(s.siteUrl)} target="_blank" rel="noopener noreferrer" title="Перейти на сайт (в новой вкладке)" aria-label="Перейти на сайт {display(s.siteUrl)}" onclick={(e) => e.stopPropagation()}><svg viewBox="0 0 16 16" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 3.5h-3v9h9v-3M9 3.5h3.5V7M12.5 3.5 7 9"/></svg></a>
                   </span>
                 </td>
                 <td class="pii text-xs text-ink-3">{s.accountLabel ?? s.accountEmail}</td>
@@ -96,7 +98,7 @@
                   <td class="num app-num">{s.position === null ? '—' : s.position.toFixed(1)}</td>
                 {/if}
                 <td class="text-right">
-                  <a class="btn btn-ghost btn-sm" href="/properties/{encodeURIComponent(s.siteUrl)}?acc={encodeURIComponent(s.accountId)}" onclick={(e) => e.stopPropagation()} title="Страница сайта">Открыть сайт</a>
+                  <a class="btn btn-ghost btn-sm" href="/properties/{encodeURIComponent(s.siteUrl)}?acc={encodeURIComponent(s.accountId)}" onclick={(e) => e.stopPropagation()} title="Страница сайта в хабе: графики, страницы, ключи">Подробно</a>
                 </td>
               </tr>
               {#if open.has(k)}
